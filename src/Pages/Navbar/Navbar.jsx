@@ -1,60 +1,76 @@
 import React from "react";
 import Logo from "../assets/logoo.png";
+import { useNavigate } from "react-router-dom";
 
 const Navbar = () => {
+  const navigate = useNavigate();
+
+  const handleclick = () => {
+    navigate("/register");
+  };
+
   return (
-    
-    <nav className="  flex w-full mt-[80px]  h-[100px]" >
-      <img src={Logo} alt="" className="h-[100px] w-[250px] ml-[120px]"/>
-      <ul className=" text-lg w-[550px] space-x-4  list-none gap-6 flex flex-row justify-center ml-[250px] mt-[35px] ">
-        <li className="relative group cursor-pointer ">
+    <nav className="flex w-full mt-[80px] h-[100px]">
+      <img src={Logo} alt="" className="h-[100px] w-[250px] ml-[120px]" />
+      <ul className="text-lg w-[550px] space-x-4 list-none gap-6 flex flex-row justify-center ml-[250px] mt-[35px]">
+        {/* Tools Dropdown */}
+        <li className="relative group cursor-pointer px-4 py-2 rounded-md hover:bg-gray-100 transition duration-300 w-[50px">
           Tools
-          <div className="before:content-[''] before:block before:w-0 before:h-0 before:border-l-4 before:border-r-4 before:border-b-4 before:border-transparent before:border-b-black before:ml-[50px] before:-mt-[14px]  before:mr-2 w-[15px] "></div>
-          <div className="absolute hidden group-hover:block bg-white border-2 text-black text-xs rounded py-1 px-2 buttom-full mb-2 h-[300px] w-[250px] ">
-            add something here
-          </div>  
+          <div className="absolute hidden group-hover:block bg-white border shadow-lg text-black text-sm rounded-md py-2 px-4 w-[250px] mt-2 z-10">
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Resume Builder</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Cover Letter Generator</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Job Tracking</p>
+          </div>
         </li>
-        <li className="relative group cursor-pointer  ">
+
+        {/* CV Dropdown */}
+        <li className="relative group cursor-pointer px-4 py-2 rounded-md hover:bg-gray-100 transition duration-300 ">
           CV
-          <div className="before:content-[''] before:block before:w-0 before:h-0 before:border-l-4 before:border-r-4 before:border-b-4 before:border-transparent before:border-b-black before:ml-[25px] before:-mt-[14px]  before:mr-2 w-[15px]"></div>
-          <div className="absolute hidden group-hover:block bg-white border-2 text-black text-xs rounded py-1 px-2 buttom-full mb-2 h-[300px] w-[250px]">
-            add something here
+          <div className="absolute hidden group-hover:block bg-white border shadow-lg text-black text-sm rounded-md py-2 px-4 w-[250px] mt-2 z-10">
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">CV Templates</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">CV Writing Guide</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">CV Samples</p>
           </div>
         </li>
-        <li className="relative group cursor-pointer  ">
-          Cover Letter
-          <div className="before:content-[''] before:block before:w-0 before:h-0 before:border-l-4 before:border-r-4 before:border-b-4 before:border-transparent before:border-b-black before:ml-[100px] before:-mt-[14px]  before:mr-2 w-[15px]"></div>
-          <div className="absolute hidden group-hover:block bg-white border-2 text-black text-xs rounded py-1 px-2 buttom-full mb-2 h-[300px] w-[250px]" >
-            add something here
+
+        {/* Cover Letter Dropdown */}
+        <li className="relative group cursor-pointer px-4 py-2 rounded-md hover:bg-gray-100 transition duration-300 ">
+          Templates
+          <div className="absolute hidden group-hover:block bg-white border shadow-lg text-black text-sm rounded-md py-2 px-4 w-[250px] mt-2 z-10">
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Cover Letter Templates</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">How to Write a Cover Letter</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Examples & Samples</p>
           </div>
         </li>
-        <li className="relative group cursor-pointer  ">
-          Career Blog
-          <div className="before:content-[''] before:block before:w-0 before:h-0 before:border-l-4 before:border-r-4 before:border-b-4 before:border-transparent before:border-b-black before:ml-[95px] before:-mt-[14px]  before:mr-2 w-[15px]"></div>
-          <div className="absolute hidden group-hover:block bg-white border-2 text-black text-xs rounded py-1 px-2 buttom-full mb-2 h-[300px] w-[250px]">
-            add something here
+
+        {/* Career Blog Dropdown */}
+        <li className="relative group cursor-pointer px-4 py-2 rounded-md hover:bg-gray-100 transition duration-300 ">
+          Blog
+          <div className="absolute hidden group-hover:block bg-white border shadow-lg text-black text-sm rounded-md py-2 px-4 w-[250px] mt-2 z-10">
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Resume Tips</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Interview Preparation</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Career Growth Strategies</p>
           </div>
         </li>
-        <li className="relative group cursor-pointer  ">
+
+        {/* About Dropdown */}
+        <li className="relative group cursor-pointer px-4 py-2 rounded-md hover:bg-gray-100 transition duration-300">
           About
-          <div className="before:content-[''] before:block before:w-0 before:h-0 before:border-l-4 before:border-r-4 before:border-b-4 before:border-transparent before:border-b-black before:ml-[55px] before:-mt-[14px]  before:mr-2 w-[15px]"></div>
-          <div className="absolute hidden group-hover:block bg-white border-2 text-black text-xs rounded py-1 px-2 buttom-full mb-2 h-[300px] w-[250px]">
-            add something here
+          <div className="absolute hidden group-hover:block bg-white border shadow-lg text-black text-sm rounded-md py-2 px-4 w-[250px] mt-2 z-10">
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Who We Are</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Our Mission</p>
+            <p className="py-1 hover:bg-gray-200 px-2 rounded-md">Contact Us</p>
           </div>
-          
-          
         </li>
       </ul>
-      <button className=" bg-blue-700 mt-[30px]  text-white  h-12 w-32 rounded-[20px] cursor-pointer transition duration-500 ease-in-out hover:bg-green-500 " 
-          >
-            My Account
-          </button>
+      <button
+        className="bg-blue-700 mt-[30px] text-white h-12 w-32 rounded-[20px] cursor-pointer transition duration-500 ease-in-out hover:bg-green-500"
+        onClick={handleclick}
+      >
+        My Account
+      </button>
     </nav>
   );
 };
 
 export default Navbar;
-
-
-
-

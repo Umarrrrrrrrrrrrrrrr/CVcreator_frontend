@@ -3,8 +3,10 @@ import logoo from "../assets/logoo.png";
 import x from "../assets/x.webp";
 import fbb from "../assets/fbb.webp";
 import link from "../assets/link.webp";
+import { useNavigate } from "react-router-dom"; 
 
 const Footer = () => {
+  const navigate = useNavigate(); // Initialize navigate
   return (
     <div>
       <div className=" w-full h-[60px] bg-lightblue flex ">
@@ -12,18 +14,20 @@ const Footer = () => {
           *The names and logos of the companies referred to above are all
           trademarks of their respective holders. Unless specifically stated
           otherwise, such references are not intended to imply any affiliation
-          or association with Zety.
+          or association with Ansari.
         </p>
       </div>
 
       <div className=" w-full h-[490px]  bg-customBlue flex">
         <img className="w-44 h-20 ml-[190px] mt-[26px]" src={logoo} alt="logoo" />
         <p className="text-white w-48 mt-[100px] -ml-[150px] text-sm">
-          Zety is a career site fueled by the best career experts and a
+          Ansari is a career site fueled by the best career experts and a
           community of millions of readers yearly. We share knowledge, tips, and
           tools to help everyone find their dream job.
         </p>
-        <button className="border-2 rounded-[30px] h-[50px] w-[200px] bg-yellow-400 text-black text-[16px] font-medium  -ml-[200px] mt-[260px]">
+        <button className="border-2 rounded-[30px] h-[50px] w-[200px] bg-yellow-400 text-black text-[16px] font-medium  -ml-[200px] mt-[260px]"
+          onClick={() => navigate("/create_cv")} // Redirect to /create_cv
+        >
           Create Your Resume
         </button>
         <img className="w-14 h-14 mt-[350px] -ml-[210px]" src={x} alt="x" />

@@ -4,35 +4,55 @@ import { useNavigate } from 'react-router-dom';
 const Register = () => {
   const navigate = useNavigate();
 
-    // stste for data
+    // state for data
     const [formData, setformData] = useState({
         username: '',
         email: '',
         password: '',
         confirmPassword: '',
-        terms: false
+        
     }); 
 
+    //states for errors
+    const [errors, setErrors] = useState("");
+
+
+    //Handle input changes
     const handleChange = (e) => {
       setformData({
         ...formData,
         [e.target.id]: e.target.value
       });
+      setErrors("");    //clear errors on input change
     };
 
-    
+
+    //validation function
+    const validateForm = () => {
+      const { username, email, password, confirmPassword } = formData;
+      if (!username || !email || !password || !confirmPassword) {
+        setErrors("All fields are required");
+        return false;
+      }
+      if (password !== confirmPassword){
+        setErrors("Passwords donot match");
+        return false;
+      }
+      return true;
+    };
+
+    //handle form submission
     const handlesubmit = async(e) =>{
       e.preventDefault();
-      if (formData.password !== formData.confirmPassword){
-        alert("password donot match");
-        return;
+      if (!validateForm()){
+        return;   //stop submission if validation fails
     }
 
     try{
       const response = await fetch('http://localhost:8000/api/register/', {
         method: 'POST',
         headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         username: formData.username,
@@ -48,26 +68,33 @@ const Register = () => {
         const data = await response.json();
         // return response.json();
         console.log('registration sucessful:', data);
-        alert("*Sucessfully login*")
-        navigate('/home');
+        alert("*Sucessfully Registered*")
+        navigate('/home');    //redirect to home on success.
 
       }else{
         const errorData = await response.json();
         // return response.json().then(err => {
-          throw new Error(JSON.stringify(err));
+          // throw new Error(JSON.stringify(err));
+          setErrors(errorData.message || "already registered username try different username");
         };
-        
-      }
-    
-    catch(error) {
-      console.error('Error:', error);
+      }catch(error) {
+        console.error('Error:', error);
+        setErrors("Something went wrong. Please try again.");
     }
   };
   
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
-      <form className="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm">
-        <h2 className="text-3xl font-extrabold mb-6 text-center text-gray-800">Register</h2>
+      <form 
+        onSubmit={handlesubmit}
+        className="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm">
+        <h2 className="text-3xl font-extrabold mb-6 text-center text-gray-800">Register</h2>    {/*Register heading*/}
+
+
+        {/*Register heading*/}
+      {errors && (
+        <div className='mb-4 text-red-600 font-semibold'>{errors}</div>
+      )}
         
         {/* Username Field */}
         <div className="mb-4">
@@ -127,7 +154,7 @@ const Register = () => {
 
         {/* Submit Button */}
         <button 
-          onClick={handlesubmit}
+          // onClick={handlesubmit}
           type="submit" 
           className="w-full bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 transition duration-200"
         >
