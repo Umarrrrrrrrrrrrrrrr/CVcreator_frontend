@@ -23,9 +23,10 @@ const Fill_cv = () => {
     //handle download 
 
     const handleDownload = async () => {
-      const canvas = await html2canvas(cvRef.current, { scale: 2 });
+      const canvas = await html2canvas(cvRef.current, { scale: 2, useCORS: true  });
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF("portrait", "mm", "a4");
+      
       const imgWidth = 210; // A4 width in mm
       const pageHeight = 297; // A4 height in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -34,7 +35,7 @@ const Fill_cv = () => {
       let position = 0;
   
       //adds the first page
-      pdf.addImage(imgData, "PNG", 0, imgWidth, imgHeight);
+      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
       //add new pages if content overflows the first page

@@ -1,36 +1,52 @@
-import React from 'react'
-import Logo from "./Logo/Logo";
-
+import React from 'react';
 import Navbar from './Navbar/Navbar';
+import Footer from "./Footer/Footer";
 import { useNavigate } from 'react-router-dom';
+// import temp7 from '../assets/temp7.png';
 
 const Create_CV = () => {
+  const navigate = useNavigate();
 
-    const Navigate = useNavigate();
- 
-    const handleCreateResumeClick = () => {
-        Navigate('/choose_templates')
-    };
+  const handleCreateResumeClick = () => {
+    navigate('/choose_templates');
+  };
 
   return (
     <div>
-      <nav className="flex ">
-        
+      <nav className="flex">
         <Navbar />
-        
-
       </nav>
 
-        <div className='space-y-3 w-[600px] ml-10 mt-[80px]'>
-            <h1 className='font-semibold text-4xl  w-[450px] ml-32 mt-12'>Free Resume Builder: Make Your Resume Fast</h1>
-            <p className='ml-32  text-2xl '>Free to use. Developed by hiring professionals.</p>
-            <p className='ml-32  text-lg w-[470px] text-slate-500'>Hassle-free resume maker that can help you land your dream job in any industry. Trusted by job seekers and HR experts. Build your resume quickly and easily today.</p>
-            <button className='bg-yellow-500 h-16 w-60 rounded-full mt-[400px] ml-[200px]' onClick={handleCreateResumeClick}>Create Your Resume Now</button>
+      {/* Main Section */}
+      <div className="container mx-auto max-w-screen-xl h-[140mm] flex flex-col lg:flex-row items-center justify-between px-10 mt-16">
+        
+        {/* Left Side: Text Content */}
+        <div className="w-full lg:w-1/2 space-y-5 text-center lg:text-left">
+          <h1 className="font-semibold text-4xl">
+            Free Resume Builder: Make Your Resume Fast
+          </h1>
+          <p className="text-2xl">Free to use. Developed by hiring professionals.</p>
+          <p className="text-lg text-slate-500">
+            Hassle-free resume maker that can help you land your dream job in any industry.
+            Trusted by job seekers and HR experts. Build your resume quickly and easily today.
+          </p>
+          <button
+            className="bg-yellow-500 h-16 w-60 rounded-full text-lg font-medium hover:bg-yellow-600 transition duration-300"
+            onClick={handleCreateResumeClick}
+          >
+            Create Your Resume Now
+          </button>
         </div>
-         
 
+        {/* Right Side: Image */}
+        {/* <div className="w-full lg:w-1/2 flex justify-center lg:justify-end mt-10 lg:mt-0">
+          <img src={newmew} alt="Resume Preview" className="w-[500px] h-auto" /> 
+          <img className="w-[500px] h-auto" src={temp7} alt="temp7" />
+        </div> */}
       </div>
-  )
-}
+      <Footer />
+    </div>
+  );
+};
 
-export default Create_CV
+export default Create_CV;

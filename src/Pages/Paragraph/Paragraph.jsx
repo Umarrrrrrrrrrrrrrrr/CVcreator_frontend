@@ -15,6 +15,9 @@ const Paragraph = () => {
   const handletryourresumeclick = () => {
     Navigate("/create_cv");
   };
+  const handlefindyourjobclick = () => {
+    Navigate("/Find_job");
+  }
 
   return (
     <div>
@@ -25,9 +28,15 @@ const Paragraph = () => {
       <p className="ml-[500px] mt-[20px]">
         Create a job-winning resume in minutes with our easy-to-use builder.
       </p>
-      <button className="w-56 h-12 bg-yellow-400 rounded-[20px] ml-[650px] mt-4 cursor-pointer transition duration-300 hover:bg-yellow-700 " onClick={handletryourresumeclick}>
+      <div className=" flex flex-row space-x-24">
+      <button className="w-56 h-12 bg-yellow-400 rounded-[20px] ml-[450px] mt-4 cursor-pointer transition duration-300 hover:bg-yellow-700 " onClick={handletryourresumeclick}>
         Try Our Resume Builder
       </button>
+
+      <button className="w-56 h-12 bg-yellow-400 rounded-[20px] ml-[850px] mt-4 cursor-pointer transition duration-300 hover:bg-yellow-700 " onClick={handlefindyourjobclick}>
+        About Jobs
+      </button>
+      </div>
 
       <div className=" relative flex space-x-14 ml-[350px] mt-10 ">
         <img className="absolute  w-12 h-12  " src={setting} alt="setting" />
