@@ -28,6 +28,8 @@ function App() {
           <Route path="/create_job" element={<Create_job/>}/>
           <Route path="/search_job" element={<Search_job/>}/>
           <Route path="/naavbar" element={<Naavbar/>}/>
+                    <Route path="/naavbar" element={<Naavbar/>}/>
+
           
         </Routes>
       </Router>
