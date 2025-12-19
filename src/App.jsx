@@ -30,7 +30,7 @@ function App() {
           <Route path="/naavbar" element={<Naavbar/>}/>
                     <Route path="/naavbar" element={<Naavbar/>}/>
 
-          
+          {/* // fsd */}
         </Routes>
       </Router>
     </React.StrictMode>
