@@ -8,118 +8,123 @@ import { useNavigate } from "react-router-dom";
 const Footer = () => {
   const navigate = useNavigate(); // Initialize navigate
   return (
-    <div>
-      <div className=" w-full h-[60px] bg-lightblue flex ">
-        <p className="text-white text-xs w-[1120px] ml-48 mt-3">
-          *The names and logos of the companies referred to above are all
-          trademarks of their respective holders. Unless specifically stated
-          otherwise, such references are not intended to imply any affiliation
-          or association with Ansari.
-        </p>
-      </div>
-
-      <div className=" w-full h-[490px]  bg-customBlue flex">
-        <img className="w-44 h-20 ml-[190px] mt-[26px]" src={logoo} alt="logoo" />
-        <p className="text-white w-48 mt-[100px] -ml-[150px] text-sm">
-          Ansari is a career site fueled by the best career experts and a
-          community of millions of readers yearly. We share knowledge, tips, and
-          tools to help everyone find their dream job.
-        </p>
-        <button className="border-2 rounded-[30px] h-[50px] w-[200px] bg-yellow-400 text-black text-[16px] font-medium  -ml-[200px] mt-[260px]"
-          onClick={() => navigate("/create_cv")} // Redirect to /create_cv
-        >
-          Create Your Resume
-        </button>
-        <img className="w-14 h-14 mt-[350px] -ml-[210px]" src={x} alt="x" />
-        <img
-          className="w-10 h-10 mt-[355px] ml-[10px]"
-          src={fbb}
-          alt="facebook"
-        />
-        <img
-          className="w-10 h-10 mt-[355px] ml-[22px] rounded-full"
-          src={link}
-          alt="linkden"
-        />
-        <p className="mt-[410px] -ml-[150px] w-14 h-7    text-white text-sm ">
-          Call us:
-        </p>
-        <p className="mt-[410px] ml-[10px] text-white w-24 h-7 text-sm  ">
-          0000-000-00
-        </p>
-
-        <p className="mt-[440px] -ml-[160px] text-white w-14 h-7 text-sm">
-          Email:
-        </p>
-        <p className="mt-[440px] ml-[10px] w-56 h-7 text-white text-sm">
-          umarismyname581@gmail.com
-        </p>
-        <div className="felx flex-col  h-fit mt-11 space-y-3 text-white text-sm cursor-pointer">
-          <p className="text-gray-500 hover:text-blue-500">Resume</p>
-          <p className="hover:text-blue-500">Resume Builder</p>
-          <p className="hover:text-blue-500">Resume Templates</p>
-          <p className="hover:text-blue-500">Resume Examples</p>
-          <p className="hover:text-blue-500">Resume Format</p>
-          <p className="hover:text-blue-500">How to write a Resume</p>
-          <p className="hover:text-blue-500">Resume Checker</p>
-          <p className="hover:text-blue-500">Resume Help</p>
-          <p className="hover:text-blue-500">Best Resume Templates</p>
-          <p className="hover:text-blue-500">Resume</p>
-        </div>
-
-        <div className="felx flex-col  h-fit mt-11 ml-16 space-y-3 text-white text-sm cursor-pointer">
-          <p className="text-gray-500 hover:text-blue-500">CV</p>
-          <p className="hover:text-blue-500">CV Builder</p>
-          <p className="hover:text-blue-500">CV Templates</p>
-          <p className="hover:text-blue-500">CV Examples</p>
-          <p className="hover:text-blue-500">CV Format</p>
-          <p className="hover:text-blue-500">How to write a CV</p>
-          <p className="hover:text-blue-500">CV Checker</p>
-        </div>
-
-        <div className="felx flex-col  h-fit mt-11 ml-20 space-y-3 text-white text-sm cursor-pointer">
-          <p className="text-gray-500 hover:text-blue-500">Cover Letter</p>
-          <p className="hover:text-blue-500">Cover Letter Builder</p>
-          <p className="hover:text-blue-500">Cover Letter Templates</p>
-          <p className="hover:text-blue-500">Cover Letter Examples</p>
-          <p className="hover:text-blue-500">Cover Letter Format</p>
-          <p className="hover:text-blue-500">How to write a Cover Letter</p>
-          <p className="hover:text-blue-500">Cover Letter Checker</p>
-        </div>
-
-        <div className="felx flex-col  h-fit mt-11 ml-20 space-y-3 text-white text-sm cursor-pointer">
-          <p className="text-gray-500 hover:text-blue-500">Support</p>
-          <p className="hover:text-blue-500">About</p>
-          <p className="hover:text-blue-500">Contact</p>
-          <p className="hover:text-blue-500">Frequently Asked Question</p>
-          <p className="hover:text-blue-500">Editorial Guidelines</p>
-          <p className="hover:text-blue-500">Media Mentions</p>
-          <p className="hover:text-blue-500">Accessibility</p>
-          <p className="hover:text-blue-500">Privacy Policy</p>
-          <p className="hover:text-blue-500">Terms Of Services</p>
-          <p className="hover:text-blue-500">Cookies & Tracking Policy</p>
-          <p className="hover:text-blue-500">Do Not Sell Or Share My Info</p>
+    <div className="bg-gray-900 text-white">
+      {/* Disclaimer */}
+      <div className="bg-blue-900 py-3">
+        <div className="max-w-7xl mx-auto px-4">
+          <p className="text-xs text-blue-100 text-center">
+            *The names and logos of the companies referred to above are all
+            trademarks of their respective holders. Unless specifically stated
+            otherwise, such references are not intended to imply any affiliation
+            or association with Ansari.
+          </p>
         </div>
       </div>
 
-      <div className="flex  w-full h-[150px] bg-lightblue text-sm text-white space-x-6 ">
-        <p className=" text-gray-500 ml-48 mt-10">CHOOSE YOUR REGION</p>
-        <div className="flex flex-row space-x-3 mt-10  w-[1050px] h-9 cursor-pointer ">
-        <li className="list-none hover:text-blue-500">English (IN)</li>
-        <li className="hover:text-blue-500">English (UK)</li>
-        <li className="hover:text-blue-500">English (US)</li>
-        <li className="hover:text-blue-500">Deutsch</li>
-        <li className="hover:text-blue-500">Espanol (IN)</li>
-        <li className="hover:text-blue-500">Francais (Canada)</li>
-        <li className="hover:text-blue-500">Francais (France)</li>
-        <li className="hover:text-blue-500">Italiano</li>
-        <li className="hover:text-blue-500">Polski</li>
-        <li className="hover:text-blue-500">Portugues (Brasil)</li>
-        </div>
-      </div>    
+      {/* Main Footer */}
+      <div className="max-w-7xl mx-auto px-4 py-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
+          {/* Company Info */}
+          <div className="lg:col-span-2">
+            <img className="w-40 h-auto mb-4" src={logoo} alt="Logo" />
+            <p className="text-gray-300 text-sm mb-6 max-w-xs">
+              Ansari is a career site fueled by the best career experts and a
+              community of millions of readers yearly. We share knowledge, tips, and
+              tools to help everyone find their dream job.
+            </p>
+            <button 
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full h-12 px-6 text-black font-semibold hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 mb-6"
+              onClick={() => navigate("/create_cv")}
+            >
+              Create Your Resume
+            </button>
+            <div className="flex items-center space-x-4 mb-6">
+              <a href="#" className="hover:opacity-80 transition-opacity">
+                <img className="w-10 h-10" src={x} alt="Twitter" />
+              </a>
+              <a href="#" className="hover:opacity-80 transition-opacity">
+                <img className="w-10 h-10 rounded-full" src={fbb} alt="Facebook" />
+              </a>
+              <a href="#" className="hover:opacity-80 transition-opacity">
+                <img className="w-10 h-10 rounded-full" src={link} alt="LinkedIn" />
+              </a>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="flex items-center">
+                <span className="text-gray-400 mr-2">Call us:</span>
+                <span className="text-white">0000-000-00</span>
+              </p>
+              <p className="flex items-center">
+                <span className="text-gray-400 mr-2">Email:</span>
+                <span className="text-white">umarismyname581@gmail.com</span>
+              </p>
+            </div>
+          </div>
 
-      <div className=" flex  w-full h-[80px] bg-customBlue">
-        <p className="text-xs text-white ml-52 mt-8">© 2024 Works Limited. All Rights Reserved.</p>
+          {/* Resume Links */}
+          <div>
+            <h3 className="font-semibold text-gray-400 mb-4 uppercase text-xs">Resume</h3>
+            <ul className="space-y-2 text-sm">
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Resume Builder</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Resume Templates</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Resume Examples</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Resume Format</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">How to write a Resume</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Resume Checker</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Resume Help</a></li>
+            </ul>
+          </div>
+
+          {/* CV Links */}
+          <div>
+            <h3 className="font-semibold text-gray-400 mb-4 uppercase text-xs">CV</h3>
+            <ul className="space-y-2 text-sm">
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">CV Builder</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">CV Templates</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">CV Examples</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">CV Format</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">How to write a CV</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">CV Checker</a></li>
+            </ul>
+          </div>
+
+          {/* Support Links */}
+          <div>
+            <h3 className="font-semibold text-gray-400 mb-4 uppercase text-xs">Support</h3>
+            <ul className="space-y-2 text-sm">
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">About</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Contact</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">FAQ</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Privacy Policy</a></li>
+              <li><a href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">Terms of Service</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Language Selector */}
+      <div className="border-t border-gray-800 py-6">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-gray-400 text-sm">CHOOSE YOUR REGION</p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              {['English (IN)', 'English (UK)', 'English (US)', 'Deutsch', 'Espanol', 'Francais', 'Italiano', 'Polski', 'Portugues'].map((lang) => (
+                <a key={lang} href="#" className="text-gray-300 hover:text-yellow-400 transition-colors">
+                  {lang}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Copyright */}
+      <div className="border-t border-gray-800 py-6">
+        <div className="max-w-7xl mx-auto px-4">
+          <p className="text-xs text-gray-400 text-center">
+            © 2024 Works Limited. All Rights Reserved.
+          </p>
+        </div>
       </div>
     </div>
   );

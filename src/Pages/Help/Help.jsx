@@ -19,28 +19,50 @@ const Help = () => {
   };
 
   return (
-    <div className="w-full h-[700px] bg-gray-100 flex flex-col items-center py-12">
-      <h1 className="text-4xl font-bold mb-6">HR Professionals Recommend ANSARI</h1>
-      <p className="text-lg text-gray-600 mb-10">Industry experts recommend Ansari as a proven way to boost your career.</p>
+    <div className="w-full bg-gradient-to-br from-gray-50 to-blue-50 flex flex-col items-center py-16">
+      <div className="max-w-7xl mx-auto px-4 text-center mb-12">
+        <h1 className="text-4xl lg:text-5xl font-bold text-gray-800 mb-4">
+          HR Professionals Recommend ANSARI
+        </h1>
+        <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          Industry experts recommend Ansari as a proven way to boost your career.
+        </p>
+      </div>
       
-      <div className="relative w-full max-w-6xl  overflow-hidden">
-        <div className="flex transition-transform duration-500 h-[400px]" style={{ transform: `translateX(-${currentSlide * 50}%)` }}>
-          {slides.map((slide) => (
-            <div key={slide.id} className="flex-shrink-0 w-1/2 p-6 bg-blue-400 rounded-2xl mx-2">
-              <div className="flex items-center justify-between">
-                <img className="w-20 h-20 rounded-full" src={slide.Image} alt="profile" />
-                <img className="w-8 h-8" src={link} alt="link" />
+      <div className="relative w-full max-w-6xl mx-auto px-4">
+        <div className="overflow-hidden rounded-2xl">
+          <div className="flex transition-transform duration-500 ease-in-out" style={{ transform: `translateX(-${currentSlide * 50}%)` }}>
+            {slides.map((slide) => (
+              <div key={slide.id} className="flex-shrink-0 w-1/2 p-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mx-2 shadow-xl">
+                <div className="flex items-start justify-between mb-4">
+                  <img className="w-16 h-16 rounded-full border-4 border-white shadow-lg" src={slide.Image} alt="profile" />
+                  <img className="w-8 h-8 opacity-80 hover:opacity-100 transition-opacity" src={link} alt="link" />
+                </div>
+                <div className="mb-4">
+                  <h2 className="text-2xl font-bold text-white mb-1">{slide.title}</h2>
+                  <p className="text-blue-100 font-medium">{slide.subtitle}</p>
+                </div>
+                <p className="text-white leading-relaxed">{slide.description}</p>
               </div>
-              <div className="ml-4 mt-4">
-                <h1 className="text-xl font-semibold text-white">{slide.title}</h1>
-                <p className="text-gray-300">{slide.subtitle}</p>
-              </div>
-              <p className="text-white mt-4">{slide.description}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-        <button className="absolute top-1/2 left-4 bg-gray-600 text-white p-4 rounded-full" onClick={prevSlide}>&lt;</button>
-        <button className="absolute top-1/2 right-4 bg-gray-600 text-white p-4 rounded-full" onClick={nextSlide}>&gt;</button>
+        <button 
+          className="absolute top-1/2 left-0 bg-white text-blue-600 p-3 rounded-full shadow-lg hover:bg-blue-50 transition-all duration-200 transform hover:scale-110 -translate-x-4" 
+          onClick={prevSlide}
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button 
+          className="absolute top-1/2 right-0 bg-white text-blue-600 p-3 rounded-full shadow-lg hover:bg-blue-50 transition-all duration-200 transform hover:scale-110 translate-x-4" 
+          onClick={nextSlide}
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
     </div>
   );

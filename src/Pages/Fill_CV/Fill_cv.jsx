@@ -11,47 +11,413 @@ import Logo from "../assets/logoo.png"
 const Fill_cv = () => {
   const location = useLocation();
   const templateId = Number(location.state?.templateId);
+  const selectedColor = location.state?.selectedColor || null;
   const cvRef = useRef(null); // ref to capture the cv section
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
+  // Color mapping function - returns inline style object
+  const getColorStyle = (defaultColor = 'blue-900', shade = 'default') => {
+    if (!selectedColor) return {};
+    
+    // Map color names to hex/rgb values
+    const colorValues = {
+      'white': { default: '#ffffff', light: '#f9fafb', dark: '#f3f4f6' },
+      'gray': { default: '#6b7280', light: '#d1d5db', dark: '#374151' },
+      'blue': { default: '#2563eb', light: '#60a5fa', dark: '#1e3a8a' },
+      'dark blue': { default: '#1e3a8a', light: '#1e40af', dark: '#1e3a8a' },
+      'purple': { default: '#9333ea', light: '#c084fc', dark: '#581c87' },
+      'light blue': { default: '#60a5fa', light: '#93c5fd', dark: '#2563eb' },
+      'green': { default: '#22c55e', light: '#4ade80', dark: '#15803d' },
+      'red': { default: '#dc2626', light: '#f87171', dark: '#991b1b' },
+      'pink': { default: '#db2777', light: '#f472b6', dark: '#9f1239' },
+      'yellow': { default: '#facc15', light: '#fde047', dark: '#ca8a04' }
+    };
+    
+    const colorValue = colorValues[selectedColor.name];
+    if (!colorValue) return {};
+    
+    // Determine shade based on default color
+    let selectedShade = colorValue.default;
+    if (defaultColor.includes('700') || defaultColor.includes('800')) {
+      selectedShade = colorValue.dark || colorValue.default;
+    } else if (defaultColor.includes('100') || defaultColor.includes('200')) {
+      selectedShade = colorValue.light || colorValue.default;
+    }
+    
+    return { backgroundColor: selectedShade };
+  };
+
+  // Get text color based on background (for contrast)
+  const getTextColor = () => {
+    if (!selectedColor) return 'text-white';
+    
+    const lightColors = ['white', 'yellow', 'light blue'];
+    return lightColors.includes(selectedColor.name) ? 'text-gray-800' : 'text-white';
+  };
+
+  // Get color class for Tailwind (fallback)
+  const getColorClass = (defaultColor = 'blue-900') => {
+    if (!selectedColor) return `bg-${defaultColor}`;
+    return `bg-${defaultColor}`; // Keep default for non-colored elements
+  };
 
 
    
 
-    //handle download 
-    //handle download 
-    //handle download 
-    //handle download 
-    //handle download 
+    // Helper function to wait for all images to load
+    const waitForImages = (element) => {
+      return new Promise((resolve) => {
+        const images = element.querySelectorAll('img');
+        if (images.length === 0) {
+          resolve();
+          return;
+        }
 
-    const handleDownload = async () => {
-      const canvas = await html2canvas(cvRef.current, { scale: 2, useCORS: true  });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("portrait", "mm", "a4");
-      
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 297; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let loadedCount = 0;
+        const totalImages = images.length;
 
-      let heightLeft = imgHeight;
-      let position = 0;
-  
-      //adds the first page
-      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+        const checkComplete = () => {
+          loadedCount++;
+          if (loadedCount === totalImages) {
+            resolve();
+          }
+        };
 
-      //add new pages if content overflows the first page
-      while (heightLeft > 0) {
-        position = heightLeft - pageHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-      pdf.save("cv_template.pdf");
+        images.forEach((img) => {
+          if (img.complete) {
+            checkComplete();
+          } else {
+            img.onload = checkComplete;
+            img.onerror = checkComplete; // Continue even if image fails to load
+            // Force reload if src is a blob URL
+            if (img.src.startsWith('blob:')) {
+              const newImg = new Image();
+              newImg.onload = () => {
+                img.src = newImg.src;
+                checkComplete();
+              };
+              newImg.onerror = checkComplete;
+              newImg.src = img.src;
+            }
+          }
+        });
+      });
     };
 
-    //handle download
-    //handle download
-    //handle download
-    //handle download
+    // Enhanced download function with high quality - captures ALL content
+    const handleDownload = async (format = 'pdf') => {
+      if (!cvRef.current) {
+        alert('CV content not found. Please try again.');
+        return;
+      }
+
+      setIsDownloading(true);
+      setDownloadProgress(10);
+
+      try {
+        // Find the actual template content (might be nested)
+        let element = cvRef.current;
+        
+        // If the ref is on a wrapper, find the actual template div
+        const templateDiv = element.querySelector('div[style*="height"], div[class*="max-w"]');
+        if (templateDiv && templateDiv !== element) {
+          // Check if templateDiv is a direct child or nested
+          const isDirectChild = Array.from(element.children).includes(templateDiv);
+          if (isDirectChild || templateDiv.offsetHeight > 500) {
+            element = templateDiv;
+          }
+        }
+
+        // Store original styles to restore later
+        const originalStyles = {
+          border: element.style.border,
+          boxShadow: element.style.boxShadow,
+          overflow: element.style.overflow,
+          height: element.style.height,
+          maxHeight: element.style.maxHeight,
+          position: element.style.position,
+          transform: element.style.transform,
+          opacity: element.style.opacity,
+          display: element.style.display
+        };
+
+        // Prepare element for full content capture
+        setDownloadProgress(15);
+        
+        // Remove ALL height restrictions to show all content
+        element.style.overflow = 'visible';
+        element.style.height = 'auto';
+        element.style.maxHeight = 'none';
+        element.style.border = 'none';
+        element.style.boxShadow = 'none';
+        element.style.position = 'relative';
+        element.style.transform = 'none';
+        element.style.opacity = '1';
+        element.style.display = 'block';
+
+        // Also ensure ALL child elements show full content
+        const allChildren = element.querySelectorAll('*');
+        const childStyles = new Map();
+        
+        allChildren.forEach((child) => {
+          const childElement = child;
+          const computedStyle = getComputedStyle(childElement);
+          
+          // Store original styles
+          childStyles.set(childElement, {
+            overflow: childElement.style.overflow,
+            maxHeight: childElement.style.maxHeight,
+            height: childElement.style.height,
+            display: childElement.style.display,
+            visibility: childElement.style.visibility
+          });
+          
+          // Remove overflow hidden from children
+          if (computedStyle.overflow === 'hidden' || computedStyle.overflow === 'auto') {
+            childElement.style.overflow = 'visible';
+          }
+          
+          // Remove ALL height restrictions
+          if (computedStyle.height && computedStyle.height !== 'auto') {
+            if (childElement.tagName === 'DIV' || childElement.tagName === 'SECTION') {
+              childElement.style.height = 'auto';
+            }
+          }
+          
+          // Remove max-height restrictions
+          if (computedStyle.maxHeight && computedStyle.maxHeight !== 'none') {
+            childElement.style.maxHeight = 'none';
+          }
+          
+          // Ensure textareas show ALL content
+          if (childElement.tagName === 'TEXTAREA') {
+            // First, set height to auto to let it expand
+            childElement.style.height = 'auto';
+            childElement.style.overflow = 'visible';
+            childElement.style.resize = 'none';
+            // Force expansion to show all content
+            const scrollHeight = childElement.scrollHeight;
+            if (scrollHeight > 0) {
+              childElement.style.height = scrollHeight + 'px';
+              childElement.style.minHeight = scrollHeight + 'px';
+            }
+          }
+          
+          // Ensure inputs are visible
+          if (childElement.tagName === 'INPUT') {
+            childElement.style.visibility = 'visible';
+            childElement.style.opacity = '1';
+          }
+          
+          // Ensure all content is visible
+          childElement.style.display = computedStyle.display === 'none' ? 'block' : '';
+          childElement.style.visibility = 'visible';
+        });
+
+        // Force multiple reflows to ensure all styles are applied
+        void element.offsetHeight;
+        void element.scrollHeight;
+        await new Promise(resolve => setTimeout(resolve, 50));
+        void element.offsetHeight;
+
+        // Wait for all images to load
+        setDownloadProgress(25);
+        await waitForImages(element);
+        
+        // Additional delay to ensure all content is rendered
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Scroll to top to ensure we capture from the beginning
+        if (element.scrollTop > 0) {
+          element.scrollTop = 0;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        setDownloadProgress(40);
+
+        // Get the actual content dimensions (including overflow)
+        const contentWidth = Math.max(
+          element.scrollWidth,
+          element.offsetWidth,
+          element.clientWidth
+        );
+        const contentHeight = Math.max(
+          element.scrollHeight,
+          element.offsetHeight,
+          element.clientHeight
+        );
+
+        // High-quality canvas capture with improved settings - captures FULL content
+        const canvas = await html2canvas(element, {
+          scale: 4, // High resolution for print quality
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          logging: false,
+          width: contentWidth,
+          height: contentHeight,
+          windowWidth: contentWidth,
+          windowHeight: contentHeight,
+          scrollX: 0,
+          scrollY: 0,
+          removeContainer: false, // Keep container to capture everything
+          imageTimeout: 20000, // 20 second timeout for images
+          onclone: (clonedDoc, clonedElement) => {
+            // Ensure all content is visible in cloned document
+            clonedElement.style.overflow = 'visible';
+            clonedElement.style.height = 'auto';
+            clonedElement.style.maxHeight = 'none';
+            
+            // Make all children visible
+            const clonedChildren = clonedElement.querySelectorAll('*');
+            clonedChildren.forEach((child) => {
+              const childEl = child;
+              childEl.style.overflow = 'visible';
+              childEl.style.maxHeight = 'none';
+              
+              // Ensure textareas show ALL content
+              if (childEl.tagName === 'TEXTAREA') {
+                childEl.style.height = 'auto';
+                childEl.style.overflow = 'visible';
+                childEl.style.resize = 'none';
+                // Force expansion
+                const scrollHeight = childEl.scrollHeight;
+                if (scrollHeight > 0) {
+                  childEl.style.height = scrollHeight + 'px';
+                  childEl.style.minHeight = scrollHeight + 'px';
+                }
+              }
+              
+              // Ensure inputs are visible
+              if (childEl.tagName === 'INPUT') {
+                childEl.style.visibility = 'visible';
+                childEl.style.opacity = '1';
+              }
+            });
+
+            // Ensure all images are properly loaded
+            const images = clonedElement.querySelectorAll('img');
+            images.forEach((img) => {
+              img.style.visibility = 'visible';
+              img.style.opacity = '1';
+              if (img.src && !img.complete) {
+                const newImg = new Image();
+                newImg.crossOrigin = 'anonymous';
+                newImg.src = img.src;
+                img.src = newImg.src;
+              }
+            });
+          }
+        });
+
+        // Restore all original styles
+        Object.keys(originalStyles).forEach((key) => {
+          if (originalStyles[key] !== undefined && originalStyles[key] !== null) {
+            element.style[key] = originalStyles[key];
+          } else {
+            element.style[key] = '';
+          }
+        });
+
+        // Restore children styles
+        childStyles.forEach((styles, child) => {
+          Object.keys(styles).forEach((key) => {
+            if (styles[key] !== undefined && styles[key] !== null) {
+              child.style[key] = styles[key];
+            } else {
+              child.style[key] = '';
+            }
+          });
+        });
+
+        setDownloadProgress(60);
+
+        if (format === 'png') {
+          // Download as PNG
+          const link = document.createElement('a');
+          link.download = `CV_Template_${templateId}_${new Date().getTime()}.png`;
+          link.href = canvas.toDataURL('image/png', 1.0); // Maximum quality
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setDownloadProgress(100);
+        } else {
+          // Download as PDF
+          const imgData = canvas.toDataURL('image/png', 1.0);
+          
+          setDownloadProgress(70);
+
+          // A4 dimensions in mm
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4',
+            compress: true
+          });
+
+          const imgWidth = 210; // A4 width in mm
+          const pageHeight = 297; // A4 height in mm
+          const pageWidth = 210;
+          
+          // Calculate image dimensions maintaining aspect ratio
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          
+          // Ensure we capture the full image height
+          const totalHeight = Math.max(imgHeight, canvas.height * (imgWidth / canvas.width));
+          
+          let heightLeft = totalHeight;
+          let position = 0;
+          let pageNumber = 1;
+
+          // Add first page with full content
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, totalHeight, undefined, 'FAST');
+          heightLeft -= pageHeight;
+
+          setDownloadProgress(85);
+
+          // Add additional pages if content overflows - ensure NO content is cut off
+          while (heightLeft > 0) {
+            position = heightLeft - pageHeight;
+            // Ensure we don't skip any content
+            if (position < 0) {
+              position = 0;
+            }
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, totalHeight, undefined, 'FAST');
+            heightLeft -= pageHeight;
+            pageNumber++;
+            
+            // Safety check to prevent infinite loop
+            if (pageNumber > 50) {
+              console.warn('PDF generation stopped at 50 pages to prevent infinite loop');
+              break;
+            }
+          }
+
+          setDownloadProgress(95);
+
+          // Generate filename with timestamp
+          const timestamp = new Date().toISOString().split('T')[0];
+          const filename = `CV_Template_${templateId}_${timestamp}.pdf`;
+          
+          pdf.save(filename);
+          setDownloadProgress(100);
+        }
+
+        // Show success message
+        setTimeout(() => {
+          setIsDownloading(false);
+          setDownloadProgress(0);
+        }, 1000);
+
+      } catch (error) {
+        console.error('Download error:', error);
+        alert('Failed to download CV. Please try again or check the console for details.');
+        setIsDownloading(false);
+        setDownloadProgress(0);
+      }
+    };
 
   //state for the editable field template 1
 
@@ -1005,7 +1371,7 @@ const Fill_cv = () => {
           >
             <div className="flex h-full">
               {/* Left Column */}
-              <div className="w-1/3 bg-blue-900 text-white p-6">
+              <div className={`w-1/3 ${getTextColor()} p-6`} style={getColorStyle('blue-900')}>
                 <input
                   type="text"
                   value={name}
@@ -1570,7 +1936,7 @@ const Fill_cv = () => {
           >
             <div className="grid grid-cols-3 gap-4 h-full">
               {/* Top Header */}
-              <div className="col-span-3 bg-gray-700 text-white p-6 text-center flex flex-col justify-center items-center">
+              <div className={`col-span-3 ${getTextColor()} p-6 text-center flex flex-col justify-center items-center`} style={getColorStyle('gray-700', 'dark')}>
                 {/* <h1 className="text-4xl font-bold">John Doe</h1> */}
                 <input
                   type="text"
@@ -1833,7 +2199,7 @@ const Fill_cv = () => {
           >
             <div className="h-full">
               {/* Header */}
-              <div className="bg-blue-700 text-white p-6 text-center flex flex-col">
+              <div className={`${getTextColor()} p-6 text-center flex flex-col`} style={getColorStyle('blue-700', 'dark')}>
                 {/* <h1 className="text-4xl font-bold">Michael Smith</h1> */}
                 <input
                   type="text"
@@ -2305,7 +2671,7 @@ const Fill_cv = () => {
           >
             <div className="h-full flex flex-col">
               {/* Header */}
-              <div className="flex items-center bg-gray-800 text-white p-6">
+              <div className={`flex items-center ${getTextColor()} p-6`} style={getColorStyle('gray-800', 'dark')}>
                 <div className="w-2/3">
                   {/* <h1 className="text-4xl font-bold">John Doe</h1> */}
                   <input
@@ -2523,7 +2889,7 @@ const Fill_cv = () => {
           >
             <div className="flex h-full">
               {/* Left Column */}
-              <div className="w-1/3 bg-blue-900 text-white p-6">
+              <div className={`w-1/3 ${getTextColor()} p-6`} style={getColorStyle('blue-900')}>
                 {/* Profile Section */}
                 <div className="flex items-center mb-6">
                   {/* Profile Image */}
@@ -3354,7 +3720,7 @@ const Fill_cv = () => {
           >
             <div className="h-full">
               {/* Header */}
-              <div className="bg-blue-700 text-white p-6 text-center">
+              <div className={`${getTextColor()} p-6 text-center`}>
                 {/* <h1 className="text-4xl font-bold">Michael Smith</h1> */}
                 <div className=" flex flex-col w-fit ml-[300px]">
                 <input type="text"
@@ -3588,13 +3954,10 @@ const Fill_cv = () => {
             style={{ height: "1100px" }}
           >
             <div className="h-full">
-              <div className="absolute  top-10 left-[950px] w-24 h-24 overflow-hidden rounded-xl border-4 border-black "
-               
-                onClick = {() => 
-                      document.getElementById("imageInput").click()
-                            
-                }
-                >
+              <div 
+                className="absolute top-10 left-[950px] w-24 h-24 overflow-hidden rounded-xl border-4 border-black"
+                onClick={() => document.getElementById("imageInput").click()}
+              >
                   <img src={selectedImage11 || "https://via.placeholder.com/200x150"} 
                   alt="profile" 
                   className="w-full h-full object-cover"
@@ -3834,15 +4197,13 @@ const Fill_cv = () => {
 
       case 12:
         return (
-          
           <div
-
             className="w-full max-w-3xl mx-auto p-8 border border-gray-300"
             style={{ height: "1100px" }}
           >
             <div className="h-full flex flex-col">
               {/* Header */}
-              <div className="flex items-center bg-gray-800 text-white p-6">
+              <div className={`flex items-center ${getTextColor()} p-6`} style={getColorStyle('gray-800', 'dark')}>
                 <div className="w-2/3">
                   {/* <h1 className="text-4xl font-bold">John Doe</h1> */}
                   <input
@@ -4114,20 +4475,108 @@ const Fill_cv = () => {
       {/* {renderTemplate()} */}
 
       <div>
-        <div ref={cvRef} className="border-2 ">
+        <div 
+          ref={cvRef} 
+          className="bg-white"
+          style={{ 
+            border: 'none',
+            boxShadow: 'none',
+            overflow: 'visible',
+            minHeight: '100%'
+          }}
+        >
           {renderTemplate()}
-          {/* Wrap the CV template inside this div */}
-          {/* Render your CV template here */}
         </div>
 
-        {/* Download button */}
-        <button
-          onClick={handleDownload}
-          className="bg-blue-700 text-white px-4 py-2 mt-7 ml-[1100px] w-[150px] h-[50px] rounded-2xl"
-        >
-          Download CV
-        </button>
-        {/* <button>Download CV</button> */}
+        {/* Enhanced Download Section */}
+        <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 flex flex-col gap-3 items-end max-w-[90vw] md:max-w-none">
+          {/* Download Options */}
+          <div className={`bg-white rounded-xl shadow-2xl p-3 md:p-4 flex flex-col gap-2 md:gap-3 transition-all duration-300 ${
+            isDownloading ? 'opacity-75 pointer-events-none' : ''
+          }`}>
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="font-semibold text-gray-800">Download Options</span>
+            </div>
+            
+            <button
+              onClick={() => handleDownload('pdf')}
+              disabled={isDownloading}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full md:min-w-[180px] justify-center text-sm md:text-base"
+            >
+              {isDownloading && downloadProgress < 100 ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating PDF...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  Download as PDF
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => handleDownload('png')}
+              disabled={isDownloading}
+              className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full md:min-w-[180px] justify-center text-sm md:text-base"
+            >
+              {isDownloading && downloadProgress < 100 ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating PNG...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Download as PNG
+                </>
+              )}
+            </button>
+
+            {/* Progress Bar */}
+            {isDownloading && downloadProgress > 0 && (
+              <div className="mt-2">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-600 text-center mt-1">{downloadProgress}%</p>
+              </div>
+            )}
+          </div>
+
+          {/* Quality Info Tooltip - Hidden on mobile */}
+          <div className="hidden md:block bg-blue-50 border border-blue-200 rounded-lg p-3 max-w-xs">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-xs font-semibold text-blue-900 mb-1">High Quality Export</p>
+                <p className="text-xs text-blue-700">
+                  PDF: Print-ready (300 DPI equivalent)<br/>
+                  PNG: Maximum quality image
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
