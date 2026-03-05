@@ -11,6 +11,9 @@ import Create_job from "./Pages/Create_job";
 import Naavbar from "./Pages/Naavbar";
 import PdfUploader from "./Pages/PDFUploader/PDFUploader";
 import Payment from "./Pages/Payment/Payment";
+import PaymentSuccess from "./Pages/Payment/PaymentSuccess";
+import PaymentFailure from "./Pages/Payment/PaymentFailure";
+import PaymentCallback from "./Pages/Payment/PaymentCallback";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
@@ -57,6 +60,9 @@ function App() {
             <Payment/>
           </ProtectedRoute>
         }/>
+        <Route path="/payment/success" element={<PaymentSuccess />} />
+        <Route path="/payment/failure" element={<PaymentFailure />} />
+        <Route path="/payment/callback" element={<PaymentCallback />} />
 
         {/* Other routes */}
         <Route path="/naavbar" element={<Naavbar/>}/>

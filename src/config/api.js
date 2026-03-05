@@ -2,14 +2,15 @@
 const API_CONFIG = {
   BASE_URL: 'http://localhost:8000',
   // Alternative: 'http://127.0.0.1:8000'
-  
+
   ENDPOINTS: {
     REGISTER: '/api/register/',
     LOGIN: '/api/login/',
-    // Alternative endpoints to try:
-    // REGISTER: '/api/auth/register/',
-    // REGISTER: '/api/users/register/',
-    // REGISTER: '/register/',
+    // Payment
+    ESEWA_INITIATE: '/api/payments/esewa/initiate/',
+    ESEWA_VERIFY: '/api/payments/esewa/verify/',
+    KHALTI_INITIATE: '/api/payments/khalti/initiate/',
+    KHALTI_VERIFY: '/api/payments/khalti/verify/',
   }
 };
 

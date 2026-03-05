@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getApiUrl } from '../../config/api';
+import API_CONFIG from '../../config/api';
 
 const Payment = () => {
   const navigate = useNavigate();
   const { upgradeToPremium } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState('premium');
   const [paymentMethod, setPaymentMethod] = useState('card');
+  const [paymentError, setPaymentError] = useState('');
   const [cardData, setCardData] = useState({
     cardNumber: '',
     cardName: '',
@@ -90,14 +93,85 @@ const Payment = () => {
     }
   };
 
+  const getBaseUrl = () => window.location.origin;
+
+  const payWithEsewa = async () => {
+    setPaymentError('');
+    setIsProcessing(true);
+    try {
+      const amount = Number(selectedPlanData.price);
+      const tax_amount = Math.round(amount * 0.1 * 100) / 100;
+      const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.ESEWA_INITIATE), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          tax_amount: tax_amount || 0,
+          success_url: `${getBaseUrl()}/payment/success`,
+          failure_url: `${getBaseUrl()}/payment/failure`,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || errData.message || `eSewa initiate failed (${res.status})`);
+      }
+      const { form_url, form_data } = await res.json();
+      if (!form_url || !form_data) throw new Error('Invalid response from eSewa');
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = form_url;
+      Object.entries(form_data).forEach(([k, v]) => {
+        const input = document.createElement('input');
+        input.name = k;
+        input.value = v;
+        input.type = 'hidden';
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err) {
+      setPaymentError(err.message || 'eSewa payment could not be started.');
+      setIsProcessing(false);
+    }
+  };
+
+  const payWithKhalti = async () => {
+    setPaymentError('');
+    setIsProcessing(true);
+    try {
+      const amountPaisa = Math.round(Number(selectedPlanData.price) * 100);
+      const purchase_order_id = `order-${Date.now()}`;
+      const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.KHALTI_INITIATE), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amountPaisa,
+          purchase_order_id,
+          purchase_order_name: `${selectedPlanData.name} Plan - CV Creator`,
+          return_url: `${getBaseUrl()}/payment/callback`,
+          website_url: getBaseUrl(),
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || errData.message || `Khalti initiate failed (${res.status})`);
+      }
+      const { payment_url } = await res.json();
+      if (!payment_url) throw new Error('Invalid response from Khalti');
+      window.location.href = payment_url;
+    } catch (err) {
+      setPaymentError(err.message || 'Khalti payment could not be started.');
+      setIsProcessing(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setPaymentError('');
     setIsProcessing(true);
-    
-    // Simulate payment processing
+    // Stripe/card: simulate for now; replace with Stripe API when backend is ready
     setTimeout(() => {
       setIsProcessing(false);
-      // Upgrade user to premium
       upgradeToPremium();
       alert('Payment successful! You now have access to premium features and templates.');
       navigate('/choose_templates');
@@ -223,7 +297,13 @@ const Payment = () => {
               <label className="block text-sm font-semibold text-gray-700 mb-4">
                 Select Payment Method
               </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {paymentError && (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  {paymentError}
+                </div>
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('card')}
@@ -233,11 +313,39 @@ const Payment = () => {
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-center gap-2">
                     <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                     </svg>
-                    <span className="font-semibold text-gray-700">Credit Card</span>
+                    <span className="font-semibold text-gray-700 text-sm text-center">Stripe / Card</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('esewa')}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    paymentMethod === 'esewa'
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-2xl font-bold text-green-600">eSewa</span>
+                    <span className="text-xs text-gray-500">Nepal</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('khalti')}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    paymentMethod === 'khalti'
+                      ? 'border-purple-500 bg-purple-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-xl font-bold text-purple-600">Khalti</span>
+                    <span className="text-xs text-gray-500">Nepal</span>
                   </div>
                 </button>
                 <button
@@ -249,8 +357,8 @@ const Payment = () => {
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl font-bold text-blue-600">PayPal</span>
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-xl font-bold text-blue-600">PayPal</span>
                   </div>
                 </button>
                 <button
@@ -262,11 +370,11 @@ const Payment = () => {
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-center gap-2">
                     <svg className="w-8 h-8 text-gray-800" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C1.79 15.25 2.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
                     </svg>
-                    <span className="font-semibold text-gray-700">Apple Pay</span>
+                    <span className="font-semibold text-gray-700 text-sm">Apple Pay</span>
                   </div>
                 </button>
               </div>
@@ -454,6 +562,72 @@ const Payment = () => {
                   }`}
                 >
                   {isProcessing ? 'Processing...' : 'Pay with Apple Pay'}
+                </button>
+              </div>
+            )}
+
+            {/* eSewa Payment */}
+            {paymentMethod === 'esewa' && (
+              <div className="text-center py-8">
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-green-600">eSewa</span>
+                </div>
+                <p className="text-gray-600 mb-6">You will be redirected to eSewa to complete your payment securely.</p>
+                <p className="text-sm text-gray-500 mb-6">Amount: ${selectedPlanData.price} ({selectedPlanData.name} Plan)</p>
+                <button
+                  type="button"
+                  onClick={payWithEsewa}
+                  disabled={isProcessing}
+                  className={`px-8 py-4 rounded-xl font-semibold transition-colors ${
+                    isProcessing
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {isProcessing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Redirecting...
+                    </span>
+                  ) : (
+                    'Pay with eSewa'
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Khalti Payment */}
+            {paymentMethod === 'khalti' && (
+              <div className="text-center py-8">
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-purple-600">Khalti</span>
+                </div>
+                <p className="text-gray-600 mb-6">You will be redirected to Khalti to complete your payment securely.</p>
+                <p className="text-sm text-gray-500 mb-6">Amount: ${selectedPlanData.price} ({selectedPlanData.name} Plan)</p>
+                <button
+                  type="button"
+                  onClick={payWithKhalti}
+                  disabled={isProcessing}
+                  className={`px-8 py-4 rounded-xl font-semibold transition-colors ${
+                    isProcessing
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                  }`}
+                >
+                  {isProcessing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Redirecting...
+                    </span>
+                  ) : (
+                    'Pay with Khalti'
+                  )}
                 </button>
               </div>
             )}
