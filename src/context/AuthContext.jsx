@@ -10,9 +10,10 @@ export const useAuth = () => {
   return context;
 };
 
+const GUEST_KEY = 'isGuest';
+
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    // Check if user is logged in from localStorage
     return localStorage.getItem('isAuthenticated') === 'true';
   });
   const [user, setUser] = useState(() => {
@@ -20,13 +21,17 @@ export const AuthProvider = ({ children }) => {
     return savedUser ? JSON.parse(savedUser) : null;
   });
   const [isPremium, setIsPremium] = useState(() => {
-    // Check if user has premium access
     return localStorage.getItem('isPremium') === 'true';
+  });
+  const [isGuest, setIsGuest] = useState(() => {
+    return sessionStorage.getItem(GUEST_KEY) === 'true';
   });
 
   const login = (userData) => {
     setIsAuthenticated(true);
     setUser(userData);
+    setIsGuest(false);
+    sessionStorage.removeItem(GUEST_KEY);
     localStorage.setItem('isAuthenticated', 'true');
     localStorage.setItem('user', JSON.stringify(userData));
   };
@@ -35,9 +40,16 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
     setUser(null);
     setIsPremium(false);
+    setIsGuest(false);
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('user');
     localStorage.removeItem('isPremium');
+    sessionStorage.removeItem(GUEST_KEY);
+  };
+
+  const enableGuestMode = () => {
+    setIsGuest(true);
+    sessionStorage.setItem(GUEST_KEY, 'true');
   };
 
   const upgradeToPremium = () => {
@@ -46,7 +58,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isPremium, upgradeToPremium }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isPremium, upgradeToPremium, isGuest, enableGuestMode }}>
       {children}
     </AuthContext.Provider>
   );

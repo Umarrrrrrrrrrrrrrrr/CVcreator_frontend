@@ -9,9 +9,9 @@ const Home = () => {
   return (
     <div>
       <Navbar />
-      <Paragraph />
+      <section id="features"><Paragraph /></section>
       <GradingSystem />
-      <Help />
+      <section id="about"><Help /></section>
       <Footer />
     </div>
   );

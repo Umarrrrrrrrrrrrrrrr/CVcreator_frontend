@@ -23,7 +23,7 @@ const Fill_cv = () => {
   useEffect(() => {
     if (!templateId) return;
     if (PREMIUM_TEMPLATE_IDS.includes(templateId) && !isPremium) {
-      navigate("/payment", { state: { message: "Please pay first to use this premium template." } });
+      navigate("/payment", { state: { message: "Premium content cannot be used unless you complete payment. Please pay first to use this template." } });
     }
   }, [templateId, isPremium, navigate]);
 

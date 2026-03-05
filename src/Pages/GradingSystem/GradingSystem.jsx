@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 const GradingSystem = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, isGuest, enableGuestMode } = useAuth();
+  const canUseGrading = isAuthenticated || isGuest;
   const [hoveredFeature, setHoveredFeature] = useState(null);
   const [animatedMetrics, setAnimatedMetrics] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -138,6 +141,46 @@ const GradingSystem = () => {
       }, 2000);
     }
   };
+
+  if (!canUseGrading) {
+    return (
+      <div className="bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 py-20 relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 relative z-10">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md mx-auto p-8 text-center">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Use Grading</h2>
+            <p className="text-gray-600 mb-6">
+              Sign in, register, or use guest mode to use the grading feature.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => navigate('/login')}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700"
+              >
+                Sign in
+              </button>
+              <button
+                onClick={() => navigate('/register')}
+                className="w-full bg-white border-2 border-blue-600 text-blue-600 py-3 rounded-lg font-semibold hover:bg-blue-50"
+              >
+                Register
+              </button>
+              <button
+                onClick={enableGuestMode}
+                className="w-full text-gray-700 py-3 rounded-lg font-semibold border-2 border-gray-300 hover:bg-gray-50"
+              >
+                Continue as Guest
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 py-20 relative overflow-hidden">

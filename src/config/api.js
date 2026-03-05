@@ -8,6 +8,7 @@ const API_CONFIG = {
     LOGIN: '/api/login/',
     JOBS: '/api/jobs/',
     JOBS_APPLICATIONS: '/api/jobs/applications/',
+    CV_GRADE: '/api/cv/grade/',
     // Payment
     ESEWA_INITIATE: '/api/payments/esewa/initiate/',
     ESEWA_VERIFY: '/api/payments/esewa/verify/',

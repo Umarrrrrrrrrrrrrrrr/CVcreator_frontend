@@ -14,6 +14,7 @@ import Payment from "./Pages/Payment/Payment";
 import PaymentSuccess from "./Pages/Payment/PaymentSuccess";
 import PaymentFailure from "./Pages/Payment/PaymentFailure";
 import PaymentCallback from "./Pages/Payment/PaymentCallback";
+import CvGrade from "./Pages/CvGrade/CvGrade";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
@@ -31,7 +32,11 @@ function App() {
             <Search_job/>
           </ProtectedRoute>
         }/>
-        <Route path="/find_job" element={<Find_job />} />
+        <Route path="/find_job" element={
+          <ProtectedRoute>
+            <Find_job />
+          </ProtectedRoute>
+        } />
         
         {/* Protected Routes - Shows login modal if not authenticated */}
         <Route path="/create_cv" element={
@@ -57,6 +62,11 @@ function App() {
         <Route path="/pdfuploader" element={
           <ProtectedRoute>
             <PdfUploader/>
+          </ProtectedRoute>
+        }/>
+        <Route path="/cv-grade" element={
+          <ProtectedRoute>
+            <CvGrade/>
           </ProtectedRoute>
         }/>
         <Route path="/payment" element={

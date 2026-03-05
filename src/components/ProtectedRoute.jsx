@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isGuest, enableGuestMode } = useAuth();
   const navigate = useNavigate();
-  const [showModal, setShowModal] = useState(!isAuthenticated);
+  const canAccess = isAuthenticated || isGuest;
+  const [showModal, setShowModal] = useState(!canAccess);
 
   const handleLogin = () => {
     setShowModal(false);
@@ -17,7 +18,12 @@ const ProtectedRoute = ({ children }) => {
     navigate('/register');
   };
 
-  if (isAuthenticated) {
+  const handleGuest = () => {
+    enableGuestMode();
+    setShowModal(false);
+  };
+
+  if (canAccess) {
     return children;
   }
 
@@ -32,19 +38,19 @@ const ProtectedRoute = ({ children }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Sign in required</h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome</h2>
               <p className="text-gray-600 mb-1">
-                You must sign in to use this feature (create CV, search jobs, or post jobs).
+                Sign in, register, or use guest mode to access Find job, Create CV, and Grading.
               </p>
               <p className="text-sm text-gray-500">
-                Sign in is only for registered users. Don&apos;t have an account? Register first.
+                Choose an option below to continue.
               </p>
             </div>
 
             <div className="space-y-3">
               <button
                 onClick={handleLogin}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
               >
                 Sign in
               </button>
@@ -53,6 +59,12 @@ const ProtectedRoute = ({ children }) => {
                 className="w-full bg-white border-2 border-blue-600 text-blue-600 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-all duration-300"
               >
                 Register
+              </button>
+              <button
+                onClick={handleGuest}
+                className="w-full text-gray-700 py-3 rounded-lg font-semibold border-2 border-gray-300 hover:bg-gray-50 transition-all duration-300"
+              >
+                Continue as Guest
               </button>
             </div>
           </div>

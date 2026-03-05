@@ -16,7 +16,7 @@ const Paragraph = () => {
     Navigate("/create_cv");
   };
   const handlefindyourjobclick = () => {
-    Navigate("/Find_job");
+    Navigate("/find_job");
   }
 
   return (
