@@ -17,11 +17,6 @@ const ProtectedRoute = ({ children }) => {
     navigate('/register');
   };
 
-  const handleSkip = () => {
-    setShowModal(false);
-    // Allow access without login
-  };
-
   if (isAuthenticated) {
     return children;
   }
@@ -37,9 +32,12 @@ const ProtectedRoute = ({ children }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Login Required</h2>
-              <p className="text-gray-600">
-                Please login or register to access this feature. You can also continue as a guest.
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Sign in required</h2>
+              <p className="text-gray-600 mb-1">
+                You must sign in to use this feature (create CV, search jobs, or post jobs).
+              </p>
+              <p className="text-sm text-gray-500">
+                Sign in is only for registered users. Don&apos;t have an account? Register first.
               </p>
             </div>
 
@@ -48,19 +46,13 @@ const ProtectedRoute = ({ children }) => {
                 onClick={handleLogin}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
-                Login
+                Sign in
               </button>
               <button
                 onClick={handleRegister}
                 className="w-full bg-white border-2 border-blue-600 text-blue-600 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-all duration-300"
               >
                 Register
-              </button>
-              <button
-                onClick={handleSkip}
-                className="w-full text-gray-600 py-2 rounded-lg font-medium hover:text-gray-800 transition-colors"
-              >
-                Continue as Guest
               </button>
             </div>
           </div>

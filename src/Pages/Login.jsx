@@ -60,7 +60,8 @@ const Login = () => {
         {/* Logo/Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">Welcome Back</h1>
-          <p className="text-gray-600">Sign in to continue to your account</p>
+          <p className="text-gray-600 mb-1">Sign in to continue to your account.</p>
+          <p className="text-sm text-gray-500">Sign in is only for registered users.</p>
         </div>
 
         {/* Login Form */}
@@ -149,9 +150,9 @@ const Login = () => {
           {/* Register Link */}
           <div className="text-center">
             <p className="text-gray-600">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link to="/register" className="text-blue-600 hover:text-blue-800 font-semibold">
-                Sign up
+                Register first
               </Link>
             </p>
           </div>

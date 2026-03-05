@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import Naavbar from './Naavbar'
+import { getApiUrl } from '../config/api'
+import API_CONFIG from '../config/api'
 
 const Create_job = () => {
   const [formData, setFormData] = useState({
@@ -8,6 +10,8 @@ const Create_job = () => {
     location: '',
     employmentType: '',
     salaryRange: '',
+    salaryMin: '',
+    salaryMax: '',
     jobDescription: '',
     responsibilities: '',
     requirements: '',
@@ -73,38 +77,54 @@ const Create_job = () => {
     return Object.keys(newErrors).length === 0
   }
 
+  const buildApiPayload = () => {
+    const salaryMin = formData.salaryMin ? Number(formData.salaryMin) : null
+    const salaryMax = formData.salaryMax ? Number(formData.salaryMax) : null
+    const employmentType = formData.employmentType ? formData.employmentType.replace('-', '_') : ''
+    return {
+      job_title: formData.jobTitle.trim(),
+      company_name: formData.companyName.trim(),
+      location: formData.location.trim(),
+      employment_type: employmentType,
+      job_description: formData.jobDescription.trim(),
+      application_deadline: formData.applicationDeadline || null,
+      contact_email: formData.contactEmail.trim(),
+      salary_min: salaryMin,
+      salary_max: salaryMax,
+      is_remote: formData.remoteOption,
+      required_skills: formData.skills.trim() || null,
+      requirements: formData.requirements.trim(),
+      key_responsibilities: formData.responsibilities.trim() || null,
+      preferred_qualifications: formData.qualifications.trim() || null,
+      years_of_experience: formData.experience.trim() || null,
+      benefits_perks: formData.benefits.trim() || null,
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
-    if (!validateForm()) {
-      return
-    }
-
+    if (!validateForm()) return
     setIsSubmitting(true)
-    
     try {
-      // Here you would typically send the data to your backend API
-      // const response = await fetch('http://localhost:8000/api/jobs/', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(formData)
-      // })
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      console.log('Job posting data:', formData)
+      const payload = buildApiPayload()
+      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.JOBS), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}))
+        throw new Error(errData.detail || errData.message || errData.error || `Failed to post job (${response.status})`)
+      }
       alert('Job posted successfully!')
-      
-      // Reset form
       setFormData({
         jobTitle: '',
         companyName: '',
         location: '',
         employmentType: '',
         salaryRange: '',
+        salaryMin: '',
+        salaryMax: '',
         jobDescription: '',
         responsibilities: '',
         requirements: '',
@@ -119,7 +139,7 @@ const Create_job = () => {
       })
     } catch (error) {
       console.error('Error posting job:', error)
-      alert('Failed to post job. Please try again.')
+      alert(error.message || 'Failed to post job. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -219,18 +239,35 @@ const Create_job = () => {
               {errors.employmentType && <p className="text-red-500 text-sm mt-1">{errors.employmentType}</p>}
             </div>
 
-            <div>
-              <label htmlFor="salaryRange" className="block text-gray-700 font-semibold mb-2">
-                Salary Range (Optional)
-              </label>
-              <input
-                type="text"
-                id="salaryRange"
-                value={formData.salaryRange}
-                onChange={handleChange}
-                placeholder="e.g., $80,000 - $120,000"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="salaryMin" className="block text-gray-700 font-semibold mb-2">
+                  Salary Min (Optional)
+                </label>
+                <input
+                  type="number"
+                  id="salaryMin"
+                  value={formData.salaryMin}
+                  onChange={handleChange}
+                  placeholder="e.g. 120000"
+                  min="0"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label htmlFor="salaryMax" className="block text-gray-700 font-semibold mb-2">
+                  Salary Max (Optional)
+                </label>
+                <input
+                  type="number"
+                  id="salaryMax"
+                  value={formData.salaryMax}
+                  onChange={handleChange}
+                  placeholder="e.g. 160000"
+                  min="0"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
           </div>
 

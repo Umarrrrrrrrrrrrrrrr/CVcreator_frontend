@@ -21,6 +21,7 @@ const Choose_templates = () => {
     const [selectedCategory, setSelectedCategory] = useState("all");
     const [sortBy, setSortBy] = useState("default");
     const [previewTemplate, setPreviewTemplate] = useState(null);
+    const [premiumBlockMessage, setPremiumBlockMessage] = useState("");
     const navigate = useNavigate();
     const { isPremium } = useAuth();
 
@@ -51,39 +52,29 @@ const Choose_templates = () => {
     const handleClick = (templateId) => {
         const template = templates.find(t => t.id === templateId);
         
-        // Check if template is popular/premium and user doesn't have premium access
         if (template && template.popular && !isPremium) {
-            // Show premium required message and redirect to payment
-            const confirmUpgrade = window.confirm(
-                "This is a Premium template! Upgrade to Premium to access this template and unlock all premium features.\n\nWould you like to upgrade now?"
-            );
-            if (confirmUpgrade) {
-                navigate("/payment");
-            }
+            setPremiumBlockMessage("Please pay first to use premium templates. Complete payment to unlock this template.");
             return;
         }
-        
+        setPremiumBlockMessage("");
         setSelectedTemplate(Number(templateId));
     }
 
     const handleChooseTemplateClick = () => {
         if(selectedTemplate) {
             const template = templates.find(t => t.id === selectedTemplate);
-            
-            // Final check before navigating to fill_cv
             if (template && template.popular && !isPremium) {
-                alert("Please upgrade to Premium to use this template. Redirecting to payment page...");
+                setPremiumBlockMessage("Please pay first to use this premium template. Complete payment to continue.");
                 navigate("/payment");
                 return;
             }
-            
             navigate("/fill_cv", {
                 state: { 
                     templateId: selectedTemplate
                 }
             });
         } else {
-            alert("please select the template");
+            alert("Please select a template.");
         }
     };
 
@@ -120,6 +111,22 @@ const Choose_templates = () => {
       </nav>
       
       <div className="max-w-7xl mx-auto px-4 py-12">
+        {premiumBlockMessage && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-amber-800">
+              <svg className="w-5 h-5 flex-shrink-0 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span className="font-medium">{premiumBlockMessage}</span>
+            </div>
+            <button
+              onClick={() => { setPremiumBlockMessage(""); navigate("/payment"); }}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 transition-colors"
+            >
+              Pay now
+            </button>
+          </div>
+        )}
         <div className="text-center mb-12">
           <h1 className="font-bold text-4xl lg:text-5xl text-gray-800 mb-4">
             Choose Your Favorite Template Design
@@ -335,6 +342,9 @@ const Choose_templates = () => {
                     className="w-full h-auto"
                   />
                 </div>
+                {previewTemplate.popular && !isPremium && (
+                  <p className="mt-2 text-amber-600 font-medium">Premium template — please pay first to use.</p>
+                )}
                 <div className="mt-6 flex gap-4 justify-end">
                   <button
                     onClick={closePreview}
@@ -346,13 +356,9 @@ const Choose_templates = () => {
                     onClick={() => {
                       const template = templates.find(t => t.id === previewTemplate.id);
                       if (template && template.popular && !isPremium) {
+                        setPremiumBlockMessage("Please pay first to use premium templates.");
                         closePreview();
-                        const confirmUpgrade = window.confirm(
-                          "This is a Premium template! Upgrade to Premium to access this template.\n\nWould you like to upgrade now?"
-                        );
-                        if (confirmUpgrade) {
-                          navigate("/payment");
-                        }
+                        navigate("/payment");
                       } else {
                         handleClick(previewTemplate.id);
                         closePreview();
@@ -360,11 +366,11 @@ const Choose_templates = () => {
                     }}
                     className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
                       previewTemplate.popular && !isPremium
-                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700'
+                        ? 'bg-amber-600 text-white hover:bg-amber-700'
                         : 'bg-blue-600 text-white hover:bg-blue-700'
                     }`}
                   >
-                    {previewTemplate.popular && !isPremium ? 'Upgrade to Use' : 'Select This Template'}
+                    {previewTemplate.popular && !isPremium ? 'Pay first to use' : 'Select This Template'}
                   </button>
                 </div>
               </div>

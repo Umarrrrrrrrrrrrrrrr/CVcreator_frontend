@@ -1,61 +1,101 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Naavbar from "./Naavbar";
+import { getApiUrl } from "../config/api";
+import API_CONFIG from "../config/api";
+
+const normalizeJob = (raw) => {
+  if (!raw) return null;
+  const salaryMin = raw.salary_min ?? raw.salaryMin;
+  const salaryMax = raw.salary_max ?? raw.salaryMax;
+  const employmentType = (raw.employment_type ?? raw.employmentType ?? "").replace("_", "-");
+  let salaryRange = raw.salary_range ?? raw.salaryRange ?? null;
+  if (!salaryRange && (salaryMin != null || salaryMax != null)) {
+    const min = salaryMin != null ? Number(salaryMin).toLocaleString() : "?";
+    const max = salaryMax != null ? Number(salaryMax).toLocaleString() : "?";
+    salaryRange = `$${min} - $${max}`;
+  }
+  return {
+    id: raw.id,
+    jobTitle: raw.job_title ?? raw.jobTitle,
+    companyName: raw.company_name ?? raw.companyName,
+    location: raw.location,
+    employmentType: employmentType || raw.employmentType,
+    salaryRange,
+    salaryMin: raw.salary_min ?? raw.salaryMin,
+    salaryMax: raw.salary_max ?? raw.salaryMax,
+    jobDescription: raw.job_description ?? raw.jobDescription,
+    requirements: raw.requirements,
+    skills: raw.required_skills ?? raw.skills,
+    remoteOption: raw.is_remote ?? raw.remoteOption ?? false,
+    postedDate: raw.posted_date ?? raw.created_at ?? raw.postedDate,
+    applicationDeadline: raw.application_deadline ?? raw.applicationDeadline,
+  };
+};
 
 const Search_job = () => {
   const [jobs, setJobs] = useState([]);
   const [filteredJobs, setFilteredJobs] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showApplicationModal, setShowApplicationModal] = useState(false);
+  const [applicationError, setApplicationError] = useState("");
   const [applicationData, setApplicationData] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    coverLetter: '',
-    resume: null
+    fullName: "",
+    email: "",
+    phone: "",
+    coverLetter: "",
+    resumeUrl: "",
+    resume: null,
   });
 
-  // Search and filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [jobTypeFilter, setJobTypeFilter] = useState("");
   const [salaryFilter, setSalaryFilter] = useState("");
+  const [searchParams, setSearchParams] = useState({ search: "", location: "", employment_type: "" });
 
-  // Fetch jobs from backend API
-  useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        setLoading(true);
-        // Update this endpoint to match your backend API for jobs
-        const response = await fetch("http://127.0.0.1:8000/api/jobs/");
-        
-        if (!response.ok) {
-          // If endpoint doesn't exist, use mock data for development
-          console.warn("Jobs API endpoint not available, using mock data");
-          const mockJobs = getMockJobs();
-          setJobs(mockJobs);
-          setFilteredJobs(mockJobs);
-          setLoading(false);
-          return;
-        }
-        
-        const data = await response.json();
-        setJobs(data);
-        setFilteredJobs(data);
-      } catch (error) {
-        console.error("Error fetching jobs:", error);
-        // Use mock data on error for development
-        const mockJobs = getMockJobs();
-        setJobs(mockJobs);
-        setFilteredJobs(mockJobs);
-      } finally {
-        setLoading(false);
+  const fetchJobs = useCallback(async (params) => {
+    try {
+      setLoading(true);
+      const q = new URLSearchParams();
+      if (params.search) q.set("search", params.search);
+      if (params.location) q.set("location", params.location);
+      if (params.employment_type) q.set("employment_type", params.employment_type);
+      const url = `${getApiUrl(API_CONFIG.ENDPOINTS.JOBS)}?${q.toString()}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Jobs API error: ${response.status}`);
       }
-    };
-
-    fetchJobs();
+      const data = await response.json();
+      const results = Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : [];
+      const normalized = results.map(normalizeJob).filter(Boolean);
+      setJobs(normalized);
+      setFilteredJobs(normalized);
+      setTotalCount(typeof data.count === "number" ? data.count : normalized.length);
+    } catch (error) {
+      console.error("Error fetching jobs:", error);
+      const mockJobs = getMockJobs();
+      setJobs(mockJobs);
+      setFilteredJobs(mockJobs);
+      setTotalCount(mockJobs.length);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchJobs(searchParams);
+  }, [searchParams, fetchJobs]);
+
+  const handleSearchClick = () => {
+    setSearchParams({
+      search: searchQuery.trim(),
+      location: locationFilter.trim(),
+      employment_type: jobTypeFilter ? jobTypeFilter.replace("-", "_") : "",
+    });
+  };
 
   // Mock jobs data for development/testing
   const getMockJobs = () => [
@@ -131,51 +171,23 @@ const Search_job = () => {
     }
   ];
 
-  // Filter jobs based on search and filters
+  // Client-side filter by salary only (search/location/employment are sent to API)
   useEffect(() => {
-    let filtered = jobs;
-
-    // Search by job title, company name, or location
-    if (searchQuery) {
-      filtered = filtered.filter(job =>
-        job.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job.skills.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+    if (!salaryFilter) {
+      setFilteredJobs(jobs);
+      return;
     }
-
-    // Filter by location
-    if (locationFilter) {
-      filtered = filtered.filter(job =>
-        job.location.toLowerCase().includes(locationFilter.toLowerCase()) ||
-        (locationFilter.toLowerCase() === "remote" && job.remoteOption)
-      );
-    }
-
-    // Filter by job type
-    if (jobTypeFilter) {
-      filtered = filtered.filter(job =>
-        job.employmentType.toLowerCase() === jobTypeFilter.toLowerCase()
-      );
-    }
-
-    // Filter by salary (simplified - you can enhance this)
-    if (salaryFilter) {
-      filtered = filtered.filter(job => {
-        if (salaryFilter === "high") {
-          return job.salaryRange.includes("120") || job.salaryRange.includes("150") || job.salaryRange.includes("160");
-        } else if (salaryFilter === "medium") {
-          return job.salaryRange.includes("80") || job.salaryRange.includes("100") || job.salaryRange.includes("110");
-        } else if (salaryFilter === "entry") {
-          return job.salaryRange.includes("60") || job.salaryRange.includes("70");
-        }
-        return true;
-      });
-    }
-
+    const filtered = jobs.filter((job) => {
+      const min = job.salaryMin != null ? Number(job.salaryMin) : null;
+      const max = job.salaryMax != null ? Number(job.salaryMax) : null;
+      const mid = min != null && max != null ? (min + max) / 2 : null;
+      if (salaryFilter === "high") return mid != null && mid >= 120000;
+      if (salaryFilter === "medium") return mid != null && mid >= 80000 && mid < 120000;
+      if (salaryFilter === "entry") return mid != null && mid < 80000;
+      return true;
+    });
     setFilteredJobs(filtered);
-  }, [searchQuery, locationFilter, jobTypeFilter, salaryFilter, jobs]);
+  }, [salaryFilter, jobs]);
 
   const handleSearchChange = (e) => {
     setSearchQuery(e.target.value);
@@ -202,41 +214,38 @@ const Search_job = () => {
 
   const handleSubmitApplication = async (e) => {
     e.preventDefault();
-    
+    setApplicationError("");
     try {
-      // Here you would send the application to your backend
-      // const formData = new FormData();
-      // formData.append('jobId', selectedJob.id);
-      // formData.append('fullName', applicationData.fullName);
-      // formData.append('email', applicationData.email);
-      // formData.append('phone', applicationData.phone);
-      // formData.append('coverLetter', applicationData.coverLetter);
-      // formData.append('resume', applicationData.resume);
-      
-      // const response = await fetch('http://127.0.0.1:8000/api/applications/', {
-      //   method: 'POST',
-      //   body: formData
-      // });
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      alert(`Application submitted successfully for ${selectedJob.jobTitle} at ${selectedJob.companyName}!`);
-      
-      // Reset form
-      setApplicationData({
-        fullName: '',
-        email: '',
-        phone: '',
-        coverLetter: '',
-        resume: null
+      const payload = {
+        job_id: selectedJob.id,
+        cover_letter: applicationData.coverLetter.trim(),
+        resume_url: applicationData.resumeUrl.trim() || undefined,
+      };
+      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.JOBS_APPLICATIONS), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(
+          errData.detail || errData.message || errData.error || `Application failed (${response.status})`
+        );
+      }
+      alert(`Application submitted successfully for ${selectedJob.jobTitle} at ${selectedJob.companyName}!`);
+      setApplicationData({
+        fullName: "",
+        email: "",
+        phone: "",
+        coverLetter: "",
+        resumeUrl: "",
+        resume: null,
+      });
       setShowApplicationModal(false);
       setSelectedJob(null);
     } catch (error) {
       console.error("Error submitting application:", error);
-      alert("Failed to submit application. Please try again.");
+      setApplicationError(error.message || "Failed to submit application. Please try again.");
     }
   };
 
@@ -270,6 +279,7 @@ const Search_job = () => {
               />
               <button
                 type="button"
+                onClick={handleSearchClick}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 font-semibold"
               >
                 Search
@@ -341,7 +351,7 @@ const Search_job = () => {
         {/* Results Count */}
         <div className="mb-4">
           <p className="text-gray-600">
-            {loading ? "Loading jobs..." : `Found ${filteredJobs.length} job${filteredJobs.length !== 1 ? 's' : ''}`}
+            {loading ? "Loading jobs..." : `Found ${totalCount} job${totalCount !== 1 ? "s" : ""}`}
           </p>
         </div>
 
@@ -548,6 +558,11 @@ const Search_job = () => {
               </div>
             </div>
             <form onSubmit={handleSubmitApplication} className="p-6 space-y-4">
+              {applicationError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                  {applicationError}
+                </div>
+              )}
               <div>
                 <label htmlFor="fullName" className="block text-gray-700 font-semibold mb-2">
                   Full Name <span className="text-red-500">*</span>
@@ -597,19 +612,19 @@ const Search_job = () => {
               </div>
 
               <div>
-                <label htmlFor="resume" className="block text-gray-700 font-semibold mb-2">
-                  Resume/CV <span className="text-red-500">*</span>
+                <label htmlFor="resumeUrl" className="block text-gray-700 font-semibold mb-2">
+                  Resume/CV URL
                 </label>
                 <input
-                  type="file"
-                  id="resume"
-                  name="resume"
+                  type="url"
+                  id="resumeUrl"
+                  name="resumeUrl"
+                  value={applicationData.resumeUrl}
                   onChange={handleApplicationChange}
-                  required
-                  accept=".pdf,.doc,.docx"
+                  placeholder="https://... (link to your resume)"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
-                <p className="text-sm text-gray-500 mt-1">Accepted formats: PDF, DOC, DOCX (Max 5MB)</p>
+                <p className="text-sm text-gray-500 mt-1">Optional. Paste a link to your resume (e.g. Google Drive, LinkedIn, or your portfolio).</p>
               </div>
 
               <div>

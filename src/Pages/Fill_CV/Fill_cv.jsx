@@ -1,20 +1,31 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 // import html2pdf from "html2pdf.js";
 // import { html2pdf } from "html2pdf.js";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
-import Logo from "../assets/logoo.png"
+import Logo from "../assets/logoo.png";
+import { useAuth } from "../../context/AuthContext";
 
+const PREMIUM_TEMPLATE_IDS = [1, 3, 5, 8, 12];
 
 const Fill_cv = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isPremium } = useAuth();
   const templateId = Number(location.state?.templateId);
   const selectedColor = location.state?.selectedColor || null;
   const cvRef = useRef(null); // ref to capture the cv section
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+
+  useEffect(() => {
+    if (!templateId) return;
+    if (PREMIUM_TEMPLATE_IDS.includes(templateId) && !isPremium) {
+      navigate("/payment", { state: { message: "Please pay first to use this premium template." } });
+    }
+  }, [templateId, isPremium, navigate]);
 
   // Color mapping function - returns inline style object
   const getColorStyle = (defaultColor = 'blue-900', shade = 'default') => {

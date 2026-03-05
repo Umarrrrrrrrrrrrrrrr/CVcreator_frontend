@@ -26,7 +26,11 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Home />} />
         <Route path="/home" element={<Home />} />
-        <Route path="/search_job" element={<Search_job/>}/>
+        <Route path="/search_job" element={
+          <ProtectedRoute>
+            <Search_job/>
+          </ProtectedRoute>
+        }/>
         <Route path="/find_job" element={<Find_job />} />
         
         {/* Protected Routes - Shows login modal if not authenticated */}

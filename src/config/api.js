@@ -6,6 +6,8 @@ const API_CONFIG = {
   ENDPOINTS: {
     REGISTER: '/api/register/',
     LOGIN: '/api/login/',
+    JOBS: '/api/jobs/',
+    JOBS_APPLICATIONS: '/api/jobs/applications/',
     // Payment
     ESEWA_INITIATE: '/api/payments/esewa/initiate/',
     ESEWA_VERIFY: '/api/payments/esewa/verify/',
