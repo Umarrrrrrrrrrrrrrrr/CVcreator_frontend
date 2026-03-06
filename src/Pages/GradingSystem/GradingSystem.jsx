@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getApiUrl } from '../../config/api';
+import API_CONFIG from '../../config/api';
+
+const GRADE_COLORS = {
+  Poor: 'bg-red-500 text-white',
+  Average: 'bg-amber-500 text-white',
+  Good: 'bg-blue-500 text-white',
+  Excellent: 'bg-green-500 text-white',
+};
 
 const GradingSystem = () => {
   const navigate = useNavigate();
@@ -11,6 +20,8 @@ const GradingSystem = () => {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [gradeResult, setGradeResult] = useState(null);
+  const [gradeError, setGradeError] = useState('');
 
   useEffect(() => {
     // Trigger animation when component mounts
@@ -95,13 +106,53 @@ const GradingSystem = () => {
     { label: "Industry Relevance", value: 90, color: "bg-pink-500" }
   ];
 
-  // PDF Upload Handler
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile && selectedFile.type === "application/pdf") {
+  const isValidFileType = (file) => {
+    const validTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/msword', // .doc
+    ];
+    return file && validTypes.includes(file.type);
+  };
+
+  const callGradeApi = async (file) => {
+    setIsAnalyzing(true);
+    setGradeError('');
+    setGradeResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.CV_GRADE), {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.detail || data.message || `Request failed (${res.status})`);
+      }
+      setGradeResult({
+        score: data.score ?? 0,
+        grade: data.grade ?? 'Average',
+        suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        enhanced_resume: data.enhanced_resume ?? '',
+      });
+    } catch (err) {
+      setGradeError(err.message || 'Failed to grade CV. Check backend and CORS.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleFileChange = async (e) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+    if (isValidFileType(selectedFile)) {
       setUploadedFile(selectedFile);
+      setGradeResult(null);
+      setGradeError('');
+      await callGradeApi(selectedFile);
     } else {
-      alert("Please upload a valid PDF file");
+      setGradeError('Please upload a valid PDF, DOCX, or DOC file.');
     }
   };
 
@@ -115,31 +166,30 @@ const GradingSystem = () => {
     setIsDragging(false);
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = async (e) => {
     e.preventDefault();
     setIsDragging(false);
     const selectedFile = e.dataTransfer.files[0];
-    if (selectedFile && selectedFile.type === "application/pdf") {
+    if (selectedFile && isValidFileType(selectedFile)) {
       setUploadedFile(selectedFile);
+      setGradeResult(null);
+      setGradeError('');
+      await callGradeApi(selectedFile);
     } else {
-      alert("Please upload a valid PDF file");
+      setGradeError('Please upload a valid PDF, DOCX, or DOC file.');
     }
   };
 
   const handleClear = () => {
     setUploadedFile(null);
     setIsAnalyzing(false);
+    setGradeResult(null);
+    setGradeError('');
   };
 
-  const handleAnalyze = () => {
-    if (uploadedFile) {
-      setIsAnalyzing(true);
-      // Simulate analysis
-      setTimeout(() => {
-        setIsAnalyzing(false);
-        // Could navigate to results page or show results
-      }, 2000);
-    }
+  const handleAnalyze = async () => {
+    if (!uploadedFile) return;
+    await callGradeApi(uploadedFile);
   };
 
   if (!canUseGrading) {
@@ -328,6 +378,15 @@ const GradingSystem = () => {
             </p>
           </div>
 
+          {gradeError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">{gradeError}</span>
+            </div>
+          )}
+
           {/* Drag & Drop Zone */}
           <div
             className={`relative border-2 border-dashed rounded-2xl p-12 transition-all duration-300 ${
@@ -356,12 +415,12 @@ const GradingSystem = () => {
                   or <span className="text-blue-600 font-semibold">click to browse</span>
                 </p>
                 <p className="text-sm text-gray-400">
-                  Supported format: PDF (Max size: 10MB)
+                  Supported formats: PDF, DOCX, DOC (Max size: 10MB)
                 </p>
                 <input
                   type="file"
                   id="pdfInput"
-                  accept="application/pdf"
+                  accept=".pdf,.docx,.doc"
                   className="hidden"
                   onChange={handleFileChange}
                 />
@@ -435,6 +494,60 @@ const GradingSystem = () => {
               </div>
             )}
           </div>
+
+          {/* Grading Results */}
+          {gradeResult && (
+            <div className="mt-8 bg-white rounded-2xl shadow-xl p-6 md:p-8 border-2 border-green-100">
+              <h3 className="text-2xl font-bold text-gray-800 mb-6">Grading Results</h3>
+              <div className="flex flex-wrap items-center gap-6 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600">Score:</span>
+                  <span className="text-2xl font-bold text-gray-800">{gradeResult.score}/100</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600">Grade:</span>
+                  <span className={`px-4 py-1.5 rounded-full font-semibold ${GRADE_COLORS[gradeResult.grade] || 'bg-gray-500 text-white'}`}>
+                    {gradeResult.grade}
+                  </span>
+                </div>
+              </div>
+              {gradeResult.suggestions.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Suggestions</h4>
+                  <ul className="list-disc list-inside space-y-2 text-gray-700">
+                    {gradeResult.suggestions.map((s, i) => (
+                      <li key={i}>{typeof s === 'string' ? s : s.text || s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {gradeResult.enhanced_resume && (
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Enhanced Resume</h4>
+                  <textarea
+                    readOnly
+                    value={gradeResult.enhanced_resume}
+                    rows={8}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 resize-y"
+                  />
+                </div>
+              )}
+              <div className="mt-6 flex gap-4">
+                <button
+                  onClick={() => navigate('/cv-grade')}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                >
+                  View Full Report
+                </button>
+                <button
+                  onClick={handleClear}
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                >
+                  Upload Another
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Alternative Options */}
           {!uploadedFile && (

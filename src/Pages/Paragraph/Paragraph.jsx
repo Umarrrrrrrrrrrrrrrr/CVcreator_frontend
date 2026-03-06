@@ -6,7 +6,9 @@ import fbb from "../assets/fbb.webp";
 import microsoft from "../assets/microsoft.png";
 import ing from "../assets/ing.webp";
 import { useNavigate } from "react-router-dom";
-import pic from "../assets/pic.png";
+import resumePreview from "../assets/resume-preview.png";
+import aiResumeFeedback from "../assets/ai-resume-feedback.png";
+import genericVsTailored from "../assets/generic-vs-tailored.png";
 
 const Paragraph = () => {
 
@@ -259,10 +261,48 @@ const Paragraph = () => {
         </div>
       </div>
 
+      {/* AI-Powered Feedback Section */}
+      <div className="max-w-7xl mx-auto px-4 mt-16">
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col lg:flex-row items-center gap-8 p-8">
+          <div className="flex-1">
+            <h2 className="font-bold text-3xl lg:text-4xl text-gray-800 mb-4">
+              Get AI-Powered Feedback on Your Resume
+            </h2>
+            <p className="text-lg text-gray-600 mb-6">
+              Our intelligent system analyzes your resume and provides instant scoring, improvement suggestions, and job match ratings. Let our AI assistant help you land more interviews.
+            </p>
+            <button
+              onClick={() => Navigate('/cv-grade')}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full font-semibold hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
+            >
+              Grade Your CV
+            </button>
+          </div>
+          <div className="flex-1 max-w-lg">
+            <img src={aiResumeFeedback} alt="AI-powered resume analysis" className="w-full h-auto rounded-xl" />
+          </div>
+        </div>
+      </div>
+
+      {/* Generic vs Tailored Section */}
+      <div className="max-w-7xl mx-auto px-4 mt-16">
+        <div className="text-center mb-8">
+          <h2 className="font-bold text-3xl lg:text-4xl text-gray-800 mb-4">
+            Why Tailored Resumes Win
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Generic resumes get lost in the pile. Tailored resumes hit the target. Create job-specific CVs that get noticed.
+          </p>
+        </div>
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          <img src={genericVsTailored} alt="Generic vs Tailored resumes comparison" className="w-full h-auto" />
+        </div>
+      </div>
+
       {/* Image Section */}
       <div className="max-w-4xl mx-auto px-4 mt-16">
         <div className="bg-gradient-to-br from-blue-400 to-purple-400 rounded-2xl shadow-2xl overflow-hidden">
-          <img src={pic} alt="Resume Preview" className="w-full h-auto" />
+          <img src={resumePreview} alt="Resume Preview" className="w-full h-auto" />
         </div>
       </div>
 

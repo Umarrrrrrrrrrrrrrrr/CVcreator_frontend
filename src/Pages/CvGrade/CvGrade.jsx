@@ -18,12 +18,44 @@ const CvGrade = () => {
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  const handleFileChange = (e) => {
+  const gradeFile = async (f) => {
+    if (!f) return;
+    setLoading(true);
+    setError("");
+    setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", f);
+      const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.CV_GRADE), {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || data.error || `Request failed (${res.status})`);
+      }
+      setResult({
+        score: data.score ?? 0,
+        grade: data.grade ?? "Average",
+        suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        enhanced_resume: data.enhanced_resume ?? "",
+      });
+    } catch (err) {
+      setError(err.message || "Failed to grade CV. Check backend and CORS.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileChange = async (e) => {
     const f = e.target.files?.[0];
     setFile(f || null);
     setCvText("");
     setResult(null);
     setError("");
+    if (f) {
+      await gradeFile(f);
+    }
   };
 
   const handleTextChange = (e) => {
@@ -43,23 +75,18 @@ const CvGrade = () => {
       return;
     }
 
+    if (file) {
+      await gradeFile(file);
+      return;
+    }
+
     setLoading(true);
     try {
-      let res;
-      if (file) {
-        const formData = new FormData();
-        formData.append("file", file);
-        res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.CV_GRADE), {
-          method: "POST",
-          body: formData,
-        });
-      } else {
-        res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.CV_GRADE), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cv_text: cvText.trim() }),
-        });
-      }
+      const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.CV_GRADE), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cv_text: cvText.trim() }),
+      });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
