@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import Naavbar from './Naavbar'
-import { getApiUrl } from '../config/api'
+import { getApiUrl, fetchWithAuth } from '../config/api'
 import API_CONFIG from '../config/api'
 
 const Create_job = () => {
@@ -107,7 +107,7 @@ const Create_job = () => {
     setIsSubmitting(true)
     try {
       const payload = buildApiPayload()
-      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.JOBS), {
+      const response = await fetchWithAuth(getApiUrl(API_CONFIG.ENDPOINTS.JOBS), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

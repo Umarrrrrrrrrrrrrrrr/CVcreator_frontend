@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import Naavbar from "./Naavbar";
-import { getApiUrl } from "../config/api";
+import { getApiUrl, fetchWithAuth } from "../config/api";
 import API_CONFIG from "../config/api";
 
 const normalizeJob = (raw) => {
@@ -221,7 +221,7 @@ const Search_job = () => {
         cover_letter: applicationData.coverLetter.trim(),
         resume_url: applicationData.resumeUrl.trim() || undefined,
       };
-      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.JOBS_APPLICATIONS), {
+      const response = await fetchWithAuth(getApiUrl(API_CONFIG.ENDPOINTS.JOBS_APPLICATIONS), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

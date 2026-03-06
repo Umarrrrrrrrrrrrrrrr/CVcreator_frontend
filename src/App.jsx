@@ -15,6 +15,7 @@ import PaymentSuccess from "./Pages/Payment/PaymentSuccess";
 import PaymentFailure from "./Pages/Payment/PaymentFailure";
 import PaymentCallback from "./Pages/Payment/PaymentCallback";
 import CvGrade from "./Pages/CvGrade/CvGrade";
+import Profile from "./Pages/Profile/Profile";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
@@ -42,6 +43,11 @@ function App() {
         <Route path="/create_cv" element={
           <ProtectedRoute>
             <Create_CV />
+          </ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <Profile />
           </ProtectedRoute>
         } />
         <Route path="/choose_templates" element={

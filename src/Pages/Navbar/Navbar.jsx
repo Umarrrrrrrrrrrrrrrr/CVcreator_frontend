@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Logo from "../assets/logoo.png";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+
+const PROFILE_PHOTO_KEY = "userProfile_photo";
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -9,6 +11,17 @@ const Navbar = () => {
   const canAccessApp = isAuthenticated || isGuest;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [profilePhoto, setProfilePhoto] = useState(null);
+
+  useEffect(() => {
+    setProfilePhoto(localStorage.getItem(PROFILE_PHOTO_KEY));
+  }, [canAccessApp]);
+
+  useEffect(() => {
+    const handlePhotoUpdate = () => setProfilePhoto(localStorage.getItem(PROFILE_PHOTO_KEY));
+    window.addEventListener("profilePhotoUpdated", handlePhotoUpdate);
+    return () => window.removeEventListener("profilePhotoUpdated", handlePhotoUpdate);
+  }, []);
 
   const projectLinks = [
     { label: "Home", path: "/" },
@@ -17,7 +30,6 @@ const Navbar = () => {
   ];
 
   const appLinks = [
-    { label: "Create CV", path: "/create_cv" },
     { label: "Templates", path: "/choose_templates" },
     { label: "Find Jobs", path: "/find_job" },
   ];
@@ -82,20 +94,21 @@ const Navbar = () => {
             ))}
           </div>
 
-          <div className="hidden md:block relative">
-            <button
-              onMouseEnter={() => setAccountOpen(true)}
-              onClick={() => setAccountOpen(!accountOpen)}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg flex items-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <span>My Account</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+          <div className="hidden md:flex md:items-center md:gap-3">
+            <div className="relative">
+              <button
+                onMouseEnter={() => setAccountOpen(true)}
+                onClick={() => setAccountOpen(!accountOpen)}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg flex items-center space-x-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span>My Account</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
             {accountOpen && (
               <div
                 className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50"
@@ -103,7 +116,7 @@ const Navbar = () => {
               >
                 {canAccessApp ? (
                   <>
-                    <button onClick={() => handleNav("/create_cv")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">Create CV</button>
+                    <button onClick={() => handleNav("/profile")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">Profile</button>
                     <button onClick={() => handleNav("/cv-grade")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">CV Grading</button>
                     <button onClick={() => handleNav("/payment")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">Upgrade / Payment</button>
                     <hr className="my-2 border-gray-100" />
@@ -116,6 +129,27 @@ const Navbar = () => {
                   </>
                 )}
               </div>
+            )}
+            </div>
+            {canAccessApp && (
+              <button
+                onClick={() => handleNav("/profile")}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                title="View your profile"
+              >
+                <div className="flex-shrink-0 w-9 h-9 rounded-full overflow-hidden border-2 border-gray-200">
+                  {profilePhoto ? (
+                    <img src={profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <span className="font-semibold text-gray-700">Profile</span>
+              </button>
             )}
           </div>
 
@@ -157,6 +191,7 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <button onClick={() => handleNav("/profile")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">Profile</button>
                 <button onClick={() => handleNav("/cv-grade")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">CV Grading</button>
                 <button onClick={() => handleNav("/payment")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">Upgrade / Payment</button>
                 <button onClick={() => { logout(); handleNav("/"); setMobileMenuOpen(false); }} className="block w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 rounded-md font-medium">Sign out</button>

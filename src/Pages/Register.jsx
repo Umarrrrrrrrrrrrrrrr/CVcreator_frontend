@@ -75,14 +75,23 @@ const Register = () => {
       if(response.ok){
         const data = await response.json();
         console.log('registration sucessful:', data);
-        // Auto-login after registration
+        // Auto-login after registration (with tokens for API calls)
         login({
           username: formData.username,
           email: formData.email,
           id: data.user?.id || data.id,
           role: data.user?.role || data.role || 'user',
-          is_verified: data.user?.is_verified || data.is_verified || false
-        });
+          is_verified: data.user?.is_verified || data.is_verified || false,
+          full_name: data.user?.full_name,
+          first_name: data.user?.first_name,
+          last_name: data.user?.last_name,
+          phone: data.user?.phone,
+          location: data.user?.location,
+          bio: data.user?.bio,
+          linkedin_url: data.user?.linkedin_url,
+          website_url: data.user?.website_url,
+          profile_photo_url: data.user?.profile_photo_url,
+        }, data.tokens ? { access: data.tokens.access, refresh: data.tokens.refresh } : null);
         alert("*Successfully Registered*")
         navigate('/home');    //redirect to home on success.
 

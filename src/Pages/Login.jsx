@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getApiUrl } from '../config/api';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -27,28 +28,40 @@ const Login = () => {
     setErrors('');
 
     try {
-      // Here you would call your actual login API
-      // const response = await fetch('http://localhost:8000/api/login/', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(formData)
-      // });
-
-      // For now, simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Simulate successful login
-      login({
-        email: formData.email,
-        username: formData.email.split('@')[0]
+      const response = await fetch(getApiUrl('/api/login/'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, password: formData.password }),
       });
-      
-      navigate('/');
+
+      if (response.ok) {
+        const data = await response.json();
+        login(
+          {
+            email: data.user?.email || formData.email,
+            username: data.user?.username || formData.email.split('@')[0],
+            id: data.user?.id,
+            role: data.user?.role,
+            full_name: data.user?.full_name,
+            first_name: data.user?.first_name,
+            last_name: data.user?.last_name,
+            phone: data.user?.phone,
+            location: data.user?.location,
+            bio: data.user?.bio,
+            linkedin_url: data.user?.linkedin_url,
+            website_url: data.user?.website_url,
+            profile_photo_url: data.user?.profile_photo_url,
+          },
+          data.tokens ? { access: data.tokens.access, refresh: data.tokens.refresh } : null
+        );
+        navigate('/');
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setErrors(errData.message || 'Invalid email or password. Please try again.');
+      }
     } catch (error) {
       console.error('Login error:', error);
-      setErrors('Invalid email or password. Please try again.');
+      setErrors(error.message?.includes('fetch') ? 'Cannot connect to server. Is the backend running?' : 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
