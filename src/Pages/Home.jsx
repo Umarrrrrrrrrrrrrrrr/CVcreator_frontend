@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import Navbar from "./Navbar/Navbar";
 import Paragraph from "./Paragraph/Paragraph";
 import GradingSystem from "./GradingSystem/GradingSystem";
@@ -7,6 +8,7 @@ import Footer from "./Footer/Footer";
 import atsWorkflow from "./assets/ats-workflow.png";
 
 const Home = () => {
+  const { t } = useTranslation();
   return (
     <div>
       <Navbar />
@@ -17,10 +19,10 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-8">
             <h2 className="font-bold text-3xl lg:text-4xl text-white mb-4">
-              How ATS System Works
+              {t("home.howAtsWorks")}
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Applicant Tracking Systems filter resumes before recruiters see them. We optimize your CV to pass ATS parsing and reach human reviewers.
+              {t("home.howAtsDesc")}
             </p>
           </div>
           <div className="max-w-4xl mx-auto">

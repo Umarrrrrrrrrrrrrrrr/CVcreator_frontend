@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { getApiUrl } from '../config/api';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const { login } = useAuth();
+
+  const toggleLanguage = () => i18n.changeLanguage(i18n.language === "en" ? "ne" : "en");
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -68,13 +72,19 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-12 px-4">
+    <div className="min-h-screen relative flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-12 px-4">
+      <button
+        onClick={toggleLanguage}
+        className="absolute top-4 right-4 px-3 py-1.5 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 hover:bg-blue-50"
+      >
+        {i18n.language === "en" ? "ने" : "EN"}
+      </button>
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Welcome Back</h1>
-          <p className="text-gray-600 mb-1">Sign in to continue to your account.</p>
-          <p className="text-sm text-gray-500">Sign in is only for registered users.</p>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">{t("login.welcomeBack")}</h1>
+          <p className="text-gray-600 mb-1">{t("login.signInToContinue")}</p>
+          <p className="text-sm text-gray-500">{t("login.signInOnly")}</p>
         </div>
 
         {/* Login Form */}
@@ -89,7 +99,7 @@ const Login = () => {
             {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-gray-700 font-semibold mb-2">
-                Email Address
+                {t("login.email")}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -112,7 +122,7 @@ const Login = () => {
             {/* Password Field */}
             <div>
               <label htmlFor="password" className="block text-gray-700 font-semibold mb-2">
-                Password
+                {t("login.password")}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -135,7 +145,7 @@ const Login = () => {
             {/* Forgot Password */}
             <div className="flex items-center justify-end">
               <a href="#" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                Forgot password?
+                {t("login.forgotPassword")}
               </a>
             </div>
 
@@ -149,7 +159,7 @@ const Login = () => {
                   : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
               }`}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? t("login.signingIn") : t("login.signIn")}
             </button>
           </form>
 
@@ -163,9 +173,9 @@ const Login = () => {
           {/* Register Link */}
           <div className="text-center">
             <p className="text-gray-600">
-              Don&apos;t have an account?{' '}
+              {t("login.noAccount")}{' '}
               <Link to="/register" className="text-blue-600 hover:text-blue-800 font-semibold">
-                Register first
+                {t("login.registerFirst")}
               </Link>
             </p>
           </div>

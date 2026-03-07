@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import Logo from "../assets/logoo.png";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
 
 const PROFILE_PHOTO_KEY = "userProfile_photo";
 
 const Navbar = () => {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const { isAuthenticated, isGuest, logout } = useAuth();
   const canAccessApp = isAuthenticated || isGuest;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -23,15 +25,19 @@ const Navbar = () => {
     return () => window.removeEventListener("profilePhotoUpdated", handlePhotoUpdate);
   }, []);
 
+  const toggleLanguage = () => {
+    i18n.changeLanguage(i18n.language === "en" ? "ne" : "en");
+  };
+
   const projectLinks = [
-    { label: "Home", path: "/" },
-    { label: "Contact Support", path: "/contact-support" },
-    { label: "About", path: "/#about" },
+    { labelKey: "nav.home", path: "/" },
+    { labelKey: "nav.contactSupport", path: "/contact-support" },
+    { labelKey: "nav.about", path: "/#about" },
   ];
 
   const appLinks = [
-    { label: "Templates", path: "/choose_templates" },
-    { label: "Find Jobs", path: "/find_job" },
+    { labelKey: "nav.templates", path: "/choose_templates" },
+    { labelKey: "nav.findJobs", path: "/find_job" },
   ];
 
   const handleNav = (path) => {
@@ -74,14 +80,14 @@ const Navbar = () => {
                 onClick={() => handleNav(link.path)}
                 className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all duration-200"
               >
-                {link.label}
+                {t(link.labelKey)}
               </button>
             ))}
             {appLinks.map((link) => (
               <button
                 key={link.path}
                 onClick={() => handleNav(link.path)}
-                title={!canAccessApp ? "Sign in to access" : undefined}
+                title={!canAccessApp ? t("nav.signInToAccess") : undefined}
                 className={`px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-1.5 ${
                   canAccessApp
                     ? "text-gray-700 font-medium hover:bg-blue-50 hover:text-blue-600"
@@ -93,9 +99,17 @@ const Navbar = () => {
                     <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                   </svg>
                 )}
-                {link.label}
+                {t(link.labelKey)}
               </button>
             ))}
+            {/* Language Toggle */}
+            <button
+              onClick={toggleLanguage}
+              className="px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all border border-gray-200"
+              title={i18n.language === "en" ? "नेपालीमा स्विच गर्नुहोस्" : "Switch to English"}
+            >
+              {i18n.language === "en" ? "ने" : "EN"}
+            </button>
           </div>
 
           <div className="hidden md:flex md:items-center md:gap-3">
@@ -108,7 +122,7 @@ const Navbar = () => {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
-                <span>My Account</span>
+                <span>{t("nav.myAccount")}</span>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -120,16 +134,16 @@ const Navbar = () => {
               >
                 {canAccessApp ? (
                   <>
-                    <button onClick={() => handleNav("/profile")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">Profile</button>
-                    <button onClick={() => handleNav("/cv-grade")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">CV Grading</button>
-                    <button onClick={() => handleNav("/payment")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">Upgrade / Payment</button>
+                    <button onClick={() => handleNav("/profile")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">{t("nav.profile")}</button>
+                    <button onClick={() => handleNav("/cv-grade")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">{t("nav.cvGrading")}</button>
+                    <button onClick={() => handleNav("/payment")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">{t("nav.upgradePayment")}</button>
                     <hr className="my-2 border-gray-100" />
-                    <button onClick={() => { logout(); handleNav("/"); }} className="w-full flex items-center px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 text-left">Sign out</button>
+                    <button onClick={() => { logout(); handleNav("/"); }} className="w-full flex items-center px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 text-left">{t("nav.signOut")}</button>
                   </>
                 ) : (
                   <>
-                    <button onClick={() => handleNav("/login")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">Sign in</button>
-                    <button onClick={() => handleNav("/register")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">Register</button>
+                    <button onClick={() => handleNav("/login")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">{t("nav.signIn")}</button>
+                    <button onClick={() => handleNav("/register")} className="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 text-left">{t("nav.register")}</button>
                   </>
                 )}
               </div>
@@ -152,7 +166,7 @@ const Navbar = () => {
                     </div>
                   )}
                 </div>
-                <span className="font-semibold text-gray-700">Profile</span>
+                <span className="font-semibold text-gray-700">{t("nav.profile")}</span>
               </button>
             )}
           </div>
@@ -174,7 +188,7 @@ const Navbar = () => {
         <div className="md:hidden border-t border-gray-200">
           <div className="px-2 pt-2 pb-3 space-y-1">
             {projectLinks.map((link) => (
-              <button key={link.path} onClick={() => handleNav(link.path)} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-md font-medium">{link.label}</button>
+              <button key={link.path} onClick={() => handleNav(link.path)} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-md font-medium">{t(link.labelKey)}</button>
             ))}
             {appLinks.map((link) => (
               <button
@@ -185,20 +199,23 @@ const Navbar = () => {
                 }`}
               >
                 {!canAccessApp && <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
-                {link.label}
+                {t(link.labelKey)}
               </button>
             ))}
+            <button onClick={toggleLanguage} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">
+              {i18n.language === "en" ? "नेपाली" : "English"}
+            </button>
             {!canAccessApp ? (
               <>
-                <button onClick={() => handleNav("/login")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-md font-medium">Sign in</button>
-                <button onClick={() => handleNav("/register")} className="w-full mt-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2.5 rounded-lg font-semibold">Register</button>
+                <button onClick={() => handleNav("/login")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-md font-medium">{t("nav.signIn")}</button>
+                <button onClick={() => handleNav("/register")} className="w-full mt-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2.5 rounded-lg font-semibold">{t("nav.register")}</button>
               </>
             ) : (
               <>
-                <button onClick={() => handleNav("/profile")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">Profile</button>
-                <button onClick={() => handleNav("/cv-grade")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">CV Grading</button>
-                <button onClick={() => handleNav("/payment")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">Upgrade / Payment</button>
-                <button onClick={() => { logout(); handleNav("/"); setMobileMenuOpen(false); }} className="block w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 rounded-md font-medium">Sign out</button>
+                <button onClick={() => handleNav("/profile")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">{t("nav.profile")}</button>
+                <button onClick={() => handleNav("/cv-grade")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">{t("nav.cvGrading")}</button>
+                <button onClick={() => handleNav("/payment")} className="block w-full text-left px-3 py-2 text-gray-700 hover:bg-blue-50 rounded-md font-medium">{t("nav.upgradePayment")}</button>
+                <button onClick={() => { logout(); handleNav("/"); setMobileMenuOpen(false); }} className="block w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 rounded-md font-medium">{t("nav.signOut")}</button>
               </>
             )}
           </div>

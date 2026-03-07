@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import bulb from "../assets/bulb.png";
 import setting from "../assets/setting.png";
 import expert from "../assets/expert.png";
@@ -11,7 +12,7 @@ import aiResumeFeedback from "../assets/ai-resume-feedback.png";
 import genericVsTailored from "../assets/generic-vs-tailored.png";
 
 const Paragraph = () => {
-
+  const { t } = useTranslation();
   const Navigate = useNavigate();
 
   const handletryourresumeclick = () => {
@@ -33,45 +34,45 @@ const Paragraph = () => {
         <div className="flex flex-wrap justify-center gap-3">
           <div className="bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-md flex items-center gap-2">
             <span className="text-2xl">🤖</span>
-            <span className="text-sm font-semibold text-gray-700">AI-Powered</span>
+            <span className="text-sm font-semibold text-gray-700">{t("home.aiPowered")}</span>
           </div>
           <div className="bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-md flex items-center gap-2">
             <span className="text-2xl">⚡</span>
-            <span className="text-sm font-semibold text-gray-700">Instant Analysis</span>
+            <span className="text-sm font-semibold text-gray-700">{t("home.instantAnalysis")}</span>
           </div>
           <div className="bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-md flex items-center gap-2">
             <span className="text-2xl">🎯</span>
-            <span className="text-sm font-semibold text-gray-700">Smart Matching</span>
+            <span className="text-sm font-semibold text-gray-700">{t("home.smartMatching")}</span>
           </div>
           <div className="bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-md flex items-center gap-2">
             <span className="text-2xl">✨</span>
-            <span className="text-sm font-semibold text-gray-700">Auto-Enhance</span>
+            <span className="text-sm font-semibold text-gray-700">{t("home.autoEnhance")}</span>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 text-center relative z-10">
         <h1 className="font-bold text-5xl lg:text-6xl text-gray-800 mb-6">
-          <span className="block">Professional Resume & Cover Letter Tools</span>
+          <span className="block">{t("home.heroTitle")}</span>
           <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mt-2">
-            Powered by AI
+            {t("home.heroSubtitle")}
           </span>
         </h1>
         <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          Create a job-winning resume in minutes with our AI-powered builder and intelligent grading system.
+          {t("home.heroDesc")}
         </p>
         <div className="flex flex-col sm:flex-row justify-center gap-4">
           <button 
             className="px-8 py-4 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full text-lg font-semibold text-gray-800 hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105" 
             onClick={handletryourresumeclick}
           >
-            Try Our Resume Builder
+            {t("home.tryResumeBuilder")}
           </button>
           <button 
             className="px-8 py-4 bg-white border-2 border-gray-300 rounded-full text-lg font-semibold text-gray-700 hover:border-blue-500 hover:text-blue-600 transition-all duration-300 shadow-md hover:shadow-lg" 
             onClick={handlefindyourjobclick}
           >
-            Find Jobs
+            {t("home.findJobs")}
           </button>
         </div>
       </div>
@@ -84,11 +85,11 @@ const Paragraph = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
             <h2 className="text-xl md:text-2xl font-semibold text-gray-700">
-              Recommended Jobs
+              {t("home.recommendedJobs")}
             </h2>
           </div>
           <p className="text-sm text-gray-500 max-w-2xl mx-auto">
-            Opportunities tailored to your skills
+            {t("home.opportunitiesTailored")}
           </p>
         </div>
 
@@ -218,7 +219,7 @@ const Paragraph = () => {
             onClick={() => Navigate('/search_job')}
             className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all duration-300 flex items-center gap-2 mx-auto"
           >
-            <span>View All Jobs</span>
+            <span>{t("home.viewAllJobs")}</span>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
@@ -233,9 +234,9 @@ const Paragraph = () => {
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
               <img className="w-10 h-10" src={setting} alt="setting" />
             </div>
-            <h2 className="font-bold text-xl mb-2 text-gray-800">Cutting Edge Career Tools</h2>
+            <h2 className="font-bold text-xl mb-2 text-gray-800">{t("home.cuttingEdgeTools")}</h2>
             <p className="text-gray-600">
-              Build a matching resume and cover letter with step-by-step guidance and expert tips.
+              {t("home.cuttingEdgeDesc")}
             </p>
           </div>
 
@@ -243,9 +244,9 @@ const Paragraph = () => {
             <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-4">
               <img className="w-10 h-10" src={bulb} alt="bulb" />
             </div>
-            <h2 className="font-bold text-xl mb-2 text-gray-800">Extensive Experience</h2>
+            <h2 className="font-bold text-xl mb-2 text-gray-800">{t("home.extensiveExperience")}</h2>
             <p className="text-gray-600">
-              Use our vast industry expertise to land your dream job faster.
+              {t("home.extensiveDesc")}
             </p>
           </div>
 
@@ -253,9 +254,9 @@ const Paragraph = () => {
             <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
               <img className="w-10 h-10" src={expert} alt="expert" />
             </div>
-            <h2 className="font-bold text-xl mb-2 text-gray-800">Expert-Crafted Guides</h2>
+            <h2 className="font-bold text-xl mb-2 text-gray-800">{t("home.expertGuides")}</h2>
             <p className="text-gray-600">
-              Grow your career with our expert blog cited by universities and top media outlets.
+              {t("home.expertDesc")}
             </p>
           </div>
         </div>
@@ -266,16 +267,16 @@ const Paragraph = () => {
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col lg:flex-row items-center gap-8 p-8">
           <div className="flex-1">
             <h2 className="font-bold text-3xl lg:text-4xl text-gray-800 mb-4">
-              Get AI-Powered Feedback on Your Resume
+              {t("home.aiFeedbackTitle")}
             </h2>
             <p className="text-lg text-gray-600 mb-6">
-              Our intelligent system analyzes your resume and provides instant scoring, improvement suggestions, and job match ratings. Let our AI assistant help you land more interviews.
+              {t("home.aiFeedbackDesc")}
             </p>
             <button
               onClick={() => Navigate('/cv-grade')}
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full font-semibold hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
             >
-              Grade Your CV
+              {t("home.gradeYourCv")}
             </button>
           </div>
           <div className="flex-1 max-w-lg">
@@ -288,10 +289,10 @@ const Paragraph = () => {
       <div className="max-w-7xl mx-auto px-4 mt-16">
         <div className="text-center mb-8">
           <h2 className="font-bold text-3xl lg:text-4xl text-gray-800 mb-4">
-            Why Tailored Resumes Win
+            {t("home.whyTailoredWin")}
           </h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Generic resumes get lost in the pile. Tailored resumes hit the target. Create job-specific CVs that get noticed.
+            {t("home.whyTailoredDesc")}
           </p>
         </div>
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -310,7 +311,7 @@ const Paragraph = () => {
       <div className="bg-gray-100 mt-16 py-8">
         <div className="max-w-7xl mx-auto px-4">
           <p className="text-center text-gray-600 mb-6 text-sm">
-            Our customers have been hired by:*
+            {t("home.ourCustomersHired")}
           </p>
           <div className="flex flex-wrap justify-center items-center gap-8">
             <div className="flex flex-col items-center">
@@ -332,24 +333,12 @@ const Paragraph = () => {
       <div className="max-w-7xl mx-auto px-4 py-16">
         <div className="text-center mb-12">
           <h2 className="font-bold text-4xl lg:text-5xl text-gray-800 mb-6">
-            What is ANSARI?
+            {t("home.whatIsAnsari")}
           </h2>
           <div className="max-w-3xl mx-auto space-y-4 text-lg text-gray-600 leading-relaxed">
-            <p>
-              ANSARI is an all-in-one career platform powered by some of the best
-              career experts and a community of 40 million readers a year.
-            </p>
-            <p>
-              We offer you the best online resume and cover letter builder, as
-              well as free professional advice from career experts. We know how
-              stressful the job search can be. That's why we want to make it as
-              easy and smooth as possible.
-            </p>
-            <p>
-              We'll not only help you build your resume but also teach you how to
-              ace a job interview, negotiate your salary, and more. You can trust
-              us on your professional journey.
-            </p>
+            <p>{t("home.whatIsAnsariDesc1")}</p>
+            <p>{t("home.whatIsAnsariDesc2")}</p>
+            <p>{t("home.whatIsAnsariDesc3")}</p>
           </div>
         </div>
 

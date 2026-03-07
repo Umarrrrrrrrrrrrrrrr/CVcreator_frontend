@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
 import Navbar from "../Navbar/Navbar";
 import { getApiUrl, fetchWithAuth } from "../../config/api";
@@ -9,6 +10,7 @@ const PROFILE_STORAGE_KEY = "userProfile";
 
 const Profile = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { user, isAuthenticated, isGuest, getAccessToken } = useAuth();
   const canAccess = isAuthenticated || isGuest;
 
@@ -195,8 +197,8 @@ const Profile = () => {
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-8">
-            <h1 className="text-3xl font-bold text-white">Profile</h1>
-            <p className="text-blue-100 mt-1">Manage your account information</p>
+            <h1 className="text-3xl font-bold text-white">{t("profile.title")}</h1>
+            <p className="text-blue-100 mt-1">{t("profile.subtitle")}</p>
           </div>
 
           <div className="p-6 md:p-8 space-y-8">
@@ -220,13 +222,13 @@ const Profile = () => {
                 </div>
                 <input type="file" id="photoInput" accept="image/*" className="hidden" onChange={handlePhotoChange} />
               </div>
-              <p className="mt-2 text-sm text-gray-500">Click to upload or change photo</p>
+              <p className="mt-2 text-sm text-gray-500">{t("profile.clickToUpload")}</p>
             </div>
 
             {/* Editable Fields */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Full Name</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.fullName")}</label>
                 <input
                   type="text"
                   name="fullName"
@@ -238,7 +240,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.username")}</label>
                 <input
                   type="text"
                   name="username"
@@ -250,7 +252,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.email")}</label>
                 <input
                   type="email"
                   name="email"
@@ -262,7 +264,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.phone")}</label>
                 <input
                   type="tel"
                   name="phone"
@@ -274,7 +276,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Location</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.location")}</label>
                 <input
                   type="text"
                   name="location"
@@ -286,7 +288,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Bio</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.bio")}</label>
                 <textarea
                   name="bio"
                   value={profile.bio}
@@ -298,7 +300,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">LinkedIn</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.linkedIn")}</label>
                 <input
                   type="url"
                   name="linkedIn"
@@ -310,7 +312,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Website</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">{t("profile.website")}</label>
                 <input
                   type="url"
                   name="website"
@@ -338,13 +340,13 @@ const Profile = () => {
                     disabled={loading}
                     className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loading ? "Saving..." : "Save Changes"}
+                    {loading ? t("profile.saving") : t("profile.saveChanges")}
                   </button>
                   <button
                     onClick={() => setIsEditing(false)}
                     className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50"
                   >
-                    Cancel
+                    {t("profile.cancel")}
                   </button>
                 </>
               ) : (
@@ -352,7 +354,7 @@ const Profile = () => {
                   onClick={() => setIsEditing(true)}
                   className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
                 >
-                  Edit Profile
+                  {t("profile.editProfile")}
                 </button>
               )}
               {saved && (
@@ -360,7 +362,7 @@ const Profile = () => {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  Saved successfully
+                  {t("profile.saved")}
                 </span>
               )}
             </div>
