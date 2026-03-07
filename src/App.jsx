@@ -16,6 +16,7 @@ import PaymentFailure from "./Pages/Payment/PaymentFailure";
 import PaymentCallback from "./Pages/Payment/PaymentCallback";
 import CvGrade from "./Pages/CvGrade/CvGrade";
 import Profile from "./Pages/Profile/Profile";
+import ContactSupport from "./Pages/ContactSupport/ContactSupport";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
@@ -28,6 +29,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Home />} />
         <Route path="/home" element={<Home />} />
+        <Route path="/contact-support" element={<ContactSupport />} />
         <Route path="/search_job" element={
           <ProtectedRoute>
             <Search_job/>

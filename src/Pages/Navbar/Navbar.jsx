@@ -25,7 +25,7 @@ const Navbar = () => {
 
   const projectLinks = [
     { label: "Home", path: "/" },
-    { label: "Features", path: "/#features" },
+    { label: "Contact Support", path: "/contact-support" },
     { label: "About", path: "/#about" },
   ];
 
@@ -44,6 +44,10 @@ const Navbar = () => {
         window.location.hash = hash;
         document.getElementById(hash)?.scrollIntoView({ behavior: "smooth" });
       }, 100);
+      return;
+    }
+    if (path === "/contact-support") {
+      navigate("/contact-support");
       return;
     }
     navigate(path);
