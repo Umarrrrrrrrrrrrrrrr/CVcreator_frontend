@@ -18,6 +18,7 @@ import CvGrade from "./Pages/CvGrade/CvGrade";
 import Profile from "./Pages/Profile/Profile";
 import ContactSupport from "./Pages/ContactSupport/ContactSupport";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 
@@ -59,7 +60,9 @@ function App() {
         } />
         <Route path="/fill_cv" element={
           <ProtectedRoute>
-            <Fill_cv />
+            <ErrorBoundary>
+              <Fill_cv />
+            </ErrorBoundary>
           </ProtectedRoute>
         } />
         <Route path="/create_job" element={

@@ -23,11 +23,16 @@ const PaymentCallback = () => {
       })
         .then((res) => res.json())
         .then((data) => {
-          if (data.status === 'Completed' || data.success) {
+          // Khalti lookup returns status: "Completed" on success
+          const isSuccess =
+            data.status === 'Completed' ||
+            (typeof data.status === 'string' && data.status.toLowerCase() === 'completed') ||
+            data.success === true;
+          if (isSuccess) {
             upgradeToPremium();
             setStatus('success');
           } else {
-            setError(data.message || 'Verification failed');
+            setError(data.message || data.detail || 'Verification failed');
             setStatus('error');
           }
         })

@@ -44,3 +44,26 @@
 .animate-fade-in {
   animation: fade-in 1s ease-out;
 }
+
+/* Professional CV Template Styles */
+.cv-input {
+  @apply transition-colors duration-200;
+}
+.cv-input:focus {
+  @apply outline-none ring-0;
+}
+.cv-section-title {
+  @apply text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3;
+}
+.cv-name {
+  @apply text-2xl font-bold tracking-tight text-gray-900;
+}
+.cv-profession {
+  @apply text-base font-medium text-gray-600 mt-1;
+}
+.cv-card {
+  @apply bg-white rounded-lg shadow-sm border border-gray-100;
+}
+.cv-divider {
+  @apply border-t border-gray-100 my-4;
+}

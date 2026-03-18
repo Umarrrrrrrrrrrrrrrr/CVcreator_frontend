@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getApiUrl } from '../../config/api';
 import API_CONFIG from '../../config/api';
+import { jsPDF } from 'jspdf';
 
 const GRADE_COLORS = {
   Poor: 'bg-red-500 text-white',
@@ -18,10 +19,22 @@ const GradingSystem = () => {
   const [hoveredFeature, setHoveredFeature] = useState(null);
   const [animatedMetrics, setAnimatedMetrics] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [gradeResult, setGradeResult] = useState(null);
   const [gradeError, setGradeError] = useState('');
+
+  // Create object URL for PDF preview and clean up on unmount/clear
+  useEffect(() => {
+    if (uploadedFile) {
+      const url = URL.createObjectURL(uploadedFile);
+      setFilePreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setFilePreviewUrl(null);
+    }
+  }, [uploadedFile]);
 
   useEffect(() => {
     // Trigger animation when component mounts
@@ -185,11 +198,130 @@ const GradingSystem = () => {
     setIsAnalyzing(false);
     setGradeResult(null);
     setGradeError('');
+    const input = document.getElementById('pdfInput');
+    if (input) input.value = '';
   };
 
   const handleAnalyze = async () => {
     if (!uploadedFile) return;
     await callGradeApi(uploadedFile);
+  };
+
+  const handleRegradeEnhanced = async () => {
+    if (!gradeResult?.enhanced_resume) return;
+    setIsAnalyzing(true);
+    setGradeError('');
+    const previousScore = gradeResult.score;
+    try {
+      const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.CV_GRADE), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cv_text: gradeResult.enhanced_resume }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.detail || data.message || `Request failed (${res.status})`);
+      }
+      setGradeResult({
+        score: data.score ?? 0,
+        grade: data.grade ?? 'Average',
+        suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        enhanced_resume: data.enhanced_resume ?? gradeResult.enhanced_resume,
+        previousScore: previousScore,
+      });
+    } catch (err) {
+      setGradeError(err.message || 'Failed to regrade. Check backend and CORS.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const parseEnhancedResumeIntoSections = (text) => {
+    const sectionPatterns = [
+      'PROFESSIONAL SUMMARY', 'EXECUTIVE SUMMARY', 'SUMMARY', 'PROFILE',
+      'EXPERIENCE', 'WORK EXPERIENCE', 'EMPLOYMENT', 'PROFESSIONAL EXPERIENCE',
+      'EDUCATION', 'ACADEMIC', 'QUALIFICATION', 'DEGREE',
+      'SKILLS', 'TECHNICAL SKILLS', 'COMPETENCIES', 'EXPERTISE',
+      'CERTIFICATIONS', 'ACHIEVEMENTS', 'PROJECTS'
+    ];
+    const sections = [];
+    let remaining = text;
+    const lines = text.split('\n');
+    let currentSection = { title: null, content: [] };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      const isHeader = sectionPatterns.some(p => trimmed.toUpperCase().startsWith(p) || trimmed.toUpperCase() === p) ||
+        (trimmed.length > 2 && trimmed.length < 50 && /^[A-Z\s\-]+$/.test(trimmed) && !trimmed.includes('  '));
+      const isSeparator = /^-{3,}$/.test(trimmed);
+
+      if (isHeader && !isSeparator && trimmed.length > 0) {
+        if (currentSection.content.length > 0 || currentSection.title) {
+          sections.push({ ...currentSection, content: currentSection.content.join('\n').trim() });
+        }
+        currentSection = { title: trimmed, content: [] };
+      } else if (!isSeparator && trimmed) {
+        currentSection.content.push(line);
+      }
+    }
+    if (currentSection.content.length > 0 || currentSection.title) {
+      sections.push({ ...currentSection, content: currentSection.content.join('\n').trim() });
+    }
+    if (sections.length === 0) {
+      sections.push({ title: null, content: text });
+    }
+    return sections;
+  };
+
+  const handleDownloadCV = () => {
+    if (!gradeResult?.enhanced_resume) return;
+    const doc = new jsPDF();
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const maxWidth = pageWidth - margin * 2;
+    const lineHeight = 6;
+    const sectionSpacing = 4;
+    let y = 20;
+
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 64, 175);
+    doc.text('Enhanced CV - AI Optimized', margin, y);
+    y += lineHeight * 2;
+
+    const sections = parseEnhancedResumeIntoSections(gradeResult.enhanced_resume);
+    doc.setTextColor(0, 0, 0);
+
+    sections.forEach((section) => {
+      if (y > 265) {
+        doc.addPage();
+        y = 20;
+      }
+      if (section.title) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(55, 65, 81);
+        doc.text(section.title, margin, y);
+        y += lineHeight + 2;
+      }
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(31, 41, 55);
+      const content = section.content || (section.title ? '' : gradeResult.enhanced_resume);
+      const lines = doc.splitTextToSize(content, maxWidth);
+      lines.forEach((line) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(line, margin, y);
+        y += lineHeight;
+      });
+      y += sectionSpacing;
+    });
+
+    doc.save(`Enhanced_CV_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   if (!canUseGrading) {
@@ -387,6 +519,7 @@ const GradingSystem = () => {
             </div>
           )}
 
+          <div className={`grid gap-8 items-start ${uploadedFile ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
           {/* Drag & Drop Zone */}
           <div
             className={`relative border-2 border-dashed rounded-2xl p-12 transition-all duration-300 ${
@@ -495,6 +628,39 @@ const GradingSystem = () => {
             )}
           </div>
 
+          {/* CV Preview - Renders uploaded file outside the upload zone */}
+          {uploadedFile && (
+            <div className="bg-white rounded-2xl shadow-xl border-2 border-gray-100 overflow-hidden lg:sticky lg:top-4">
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3">
+                <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 8.414V19a2 2 0 01-2 2z" />
+                  </svg>
+                  CV Preview
+                </h4>
+              </div>
+              <div className="p-4 min-h-[400px]">
+                {uploadedFile.type === 'application/pdf' && filePreviewUrl ? (
+                  <iframe
+                    src={filePreviewUrl}
+                    title="CV Preview"
+                    className="w-full h-[500px] rounded-lg border border-gray-200"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[400px] text-gray-500">
+                    <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <p className="font-medium text-gray-600">Word document preview</p>
+                    <p className="text-sm mt-1">Preview not available for DOCX/DOC files.</p>
+                    <p className="text-sm mt-2">Your file has been uploaded successfully.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          </div>
+
           {/* Grading Results */}
           {gradeResult && (
             <div className="mt-8 bg-white rounded-2xl shadow-xl p-6 md:p-8 border-2 border-green-100">
@@ -503,6 +669,11 @@ const GradingSystem = () => {
                 <div className="flex items-center gap-2">
                   <span className="text-gray-600">Score:</span>
                   <span className="text-2xl font-bold text-gray-800">{gradeResult.score}/100</span>
+                  {gradeResult.previousScore != null && (
+                    <span className="text-sm text-green-600 font-medium">
+                      (was {gradeResult.previousScore} ↑ +{gradeResult.score - gradeResult.previousScore})
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-600">Grade:</span>
@@ -512,36 +683,103 @@ const GradingSystem = () => {
                 </div>
               </div>
               {gradeResult.suggestions.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Suggestions</h4>
-                  <ul className="list-disc list-inside space-y-2 text-gray-700">
+                <div className="mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl">
+                  <h4 className="text-lg font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    Apply These Improvements
+                  </h4>
+                  <ul className="space-y-2 text-gray-700">
                     {gradeResult.suggestions.map((s, i) => (
-                      <li key={i}>{typeof s === 'string' ? s : s.text || s}</li>
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-200 text-amber-800 text-sm font-bold flex-shrink-0">{i + 1}</span>
+                        <span>{typeof s === 'string' ? s : s.text || s}</span>
+                      </li>
                     ))}
                   </ul>
                 </div>
               )}
               {gradeResult.enhanced_resume && (
-                <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Enhanced Resume</h4>
-                  <textarea
-                    readOnly
-                    value={gradeResult.enhanced_resume}
-                    rows={8}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 resize-y"
-                  />
+                <div className="mb-6 p-6 rounded-2xl bg-gradient-to-br from-blue-50 via-white to-purple-50 border-2 border-blue-200 shadow-lg">
+                  <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="text-xl font-bold text-gray-800">AI-Enhanced Resume</h4>
+                        <p className="text-sm text-gray-600">Your finest CV — optimized by our AI model</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">✓ Improvements Applied</span>
+                  </div>
+                  <div className="relative">
+                    <div className="absolute -top-1 -left-1 w-4 h-4 border-l-2 border-t-2 border-blue-400 rounded-tl-lg" />
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 border-r-2 border-b-2 border-purple-400 rounded-br-lg" />
+                    <textarea
+                      readOnly
+                      value={gradeResult.enhanced_resume}
+                      rows={10}
+                      className="w-full px-5 py-4 border-2 border-blue-100 rounded-xl bg-white/80 text-gray-800 resize-y font-medium leading-relaxed focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
                 </div>
               )}
-              <div className="mt-6 flex gap-4">
+              <div className="mt-6 flex flex-wrap gap-4">
+                <button
+                  onClick={handleRegradeEnhanced}
+                  disabled={!gradeResult?.enhanced_resume || isAnalyzing}
+                  className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-orange-600 shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Regrading...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Regrade Enhanced CV
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleDownloadCV}
+                  disabled={!gradeResult?.enhanced_resume}
+                  className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Finest CV
+                </button>
+                <button
+                  onClick={() => navigate('/choose_templates', { state: { enhancedResume: gradeResult?.enhanced_resume } })}
+                  disabled={!gradeResult?.enhanced_resume}
+                  className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                  </svg>
+                  Use in Template
+                </button>
                 <button
                   onClick={() => navigate('/cv-grade')}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700"
                 >
                   View Full Report
                 </button>
                 <button
                   onClick={handleClear}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50"
                 >
                   Upload Another
                 </button>

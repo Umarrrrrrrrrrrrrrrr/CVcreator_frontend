@@ -24,17 +24,25 @@ const PaymentSuccess = () => {
       )
         .then((res) => res.json())
         .then((data) => {
-          if (data.status === 'success' || data.verified) {
+          // eSewa returns status: "COMPLETE" on success; also support success/verified for compatibility
+          const isSuccess =
+            data.status === 'COMPLETE' ||
+            data.status === 'complete' ||
+            data.status === 'success' ||
+            data.verified === true;
+          if (isSuccess) {
             upgradeToPremium();
             setVerified(true);
           } else {
-            setError(data.message || 'Verification failed');
+            setError(data.message || data.detail || 'Verification failed');
           }
         })
         .catch(() => setError('Could not verify payment'))
         .finally(() => setVerifying(false));
     } else {
-      setVerified(true);
+      // No verification params - user may have landed here without completing payment
+      setError('No payment data received. If you completed payment, please try selecting a template.');
+      setVerified(true); // show UI, but we did not call upgradeToPremium
     }
   }, [transactionUuid, totalAmount, upgradeToPremium]);
 

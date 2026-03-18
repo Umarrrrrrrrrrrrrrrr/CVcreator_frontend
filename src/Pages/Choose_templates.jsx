@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import logoo from "./assets/logoo.png";
 import temp1 from "./assets/temp1.png";
 import temp2 from "./assets/temp2.png";
@@ -12,10 +13,14 @@ import temp9 from "./assets/temp9.png";
 import temp10 from "./assets/temp10.png";
 import temp11 from "./assets/temp11.png";
 import temp12 from "./assets/temp12.png";
-import { useNavigate } from "react-router-dom";
+import temp13 from "./assets/temp13.png";
+import temp14 from "./assets/temp14.png";
+import temp15 from "./assets/temp15.png";
 import { useAuth } from "../context/AuthContext";
 
 const Choose_templates = () => {
+    const location = useLocation();
+    const enhancedResume = location.state?.enhancedResume;
     const [selectedTemplate, setSelectedTemplate] = useState("");   
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("all");
@@ -25,20 +30,23 @@ const Choose_templates = () => {
     const navigate = useNavigate();
     const { isPremium } = useAuth();
 
-    // Template data with categories
+    // Template data - 15 professional CV designs (all free to access)
     const templates = [
-        { id: 1, image: temp1, name: "Modern Professional", category: "modern", popular: true },
+        { id: 1, image: temp1, name: "Modern Professional", category: "modern", popular: false },
         { id: 2, image: temp2, name: "Classic Elegant", category: "classic", popular: false },
-        { id: 3, image: temp3, name: "Creative Design", category: "creative", popular: true },
+        { id: 3, image: temp3, name: "Creative Design", category: "creative", popular: false },
         { id: 4, image: temp4, name: "Corporate Standard", category: "professional", popular: false },
-        { id: 5, image: temp5, name: "Minimalist Style", category: "modern", popular: true },
+        { id: 5, image: temp5, name: "Minimalist Style", category: "modern", popular: false },
         { id: 6, image: temp6, name: "Traditional Layout", category: "classic", popular: false },
         { id: 7, image: temp7, name: "Bold Creative", category: "creative", popular: false },
-        { id: 8, image: temp8, name: "Executive Format", category: "professional", popular: true },
+        { id: 8, image: temp8, name: "Executive Format", category: "professional", popular: false },
         { id: 9, image: temp9, name: "Contemporary Design", category: "modern", popular: false },
         { id: 10, image: temp10, name: "Timeless Classic", category: "classic", popular: false },
         { id: 11, image: temp11, name: "Artistic Layout", category: "creative", popular: false },
-        { id: 12, image: temp12, name: "Business Professional", category: "professional", popular: true }
+        { id: 12, image: temp12, name: "Business Professional", category: "professional", popular: false },
+        { id: 13, image: temp13, name: "ATS-Optimized", category: "professional", popular: false },
+        { id: 14, image: temp14, name: "Tech Developer", category: "modern", popular: false },
+        { id: 15, image: temp15, name: "Academic Scholar", category: "classic", popular: false }
     ];
 
     const categories = [
@@ -68,9 +76,10 @@ const Choose_templates = () => {
                 navigate("/payment");
                 return;
             }
-            navigate("/fill_cv", {
+            navigate(`/fill_cv?templateId=${selectedTemplate}`, {
                 state: { 
-                    templateId: selectedTemplate
+                    templateId: selectedTemplate,
+                    ...(enhancedResume && { enhancedResume })
                 }
             });
         } else {
@@ -130,9 +139,24 @@ const Choose_templates = () => {
             </button>
           </div>
         )}
+        {enhancedResume && (
+          <div className="mb-8 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-800">Your enhanced CV is ready</p>
+                <p className="text-sm text-gray-600">Select a template below to apply your AI-optimized content in a professional layout.</p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="text-center mb-12">
           <h1 className="font-bold text-4xl lg:text-5xl text-gray-800 mb-4">
-            Choose Your Favorite Image Picture
+            Choose Your Professional CV Template
           </h1>
           <p className="text-lg text-gray-600">
             You can always change your template later.
@@ -221,6 +245,7 @@ const Choose_templates = () => {
             {filteredTemplates.map((template) => (
               <div
                 key={template.id}
+                onClick={() => handleClick(template.id)}
                 className={`relative group cursor-pointer transform transition-all duration-300 ${
                   selectedTemplate === template.id 
                     ? "scale-105 ring-4 ring-blue-500 ring-opacity-50" 
@@ -232,11 +257,11 @@ const Choose_templates = () => {
                     ? 'border-purple-300' 
                     : 'border-transparent hover:border-blue-300'
                 }`}>
-                  <div className="relative">
+                  <div className="relative aspect-[3/4] overflow-hidden">
                     <img 
                       src={template.image} 
                       alt={template.name} 
-                      className={`w-full h-auto object-cover transition-all duration-300 ${
+                      className={`w-full h-full object-cover object-top transition-all duration-300 ${
                         template.popular && !isPremium ? 'opacity-75' : ''
                       }`}
                     />
@@ -266,7 +291,7 @@ const Choose_templates = () => {
                     </div>
                   )}
                   {/* Hover Overlay with Actions */}
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-300 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-300 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

@@ -1,7 +1,9 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Naavbar from "../Naavbar";
 import { getApiUrl } from "../../config/api";
 import API_CONFIG from "../../config/api";
+import { jsPDF } from "jspdf";
 
 const GRADE_COLORS = {
   Poor: "bg-red-500 text-white",
@@ -11,6 +13,7 @@ const GRADE_COLORS = {
 };
 
 const CvGrade = () => {
+  const navigate = useNavigate();
   const [cvText, setCvText] = useState("");
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -114,6 +117,123 @@ const CvGrade = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleRegradeEnhanced = async () => {
+    if (!result?.enhanced_resume) return;
+    setLoading(true);
+    setError("");
+    const previousScore = result.score;
+    try {
+      const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.CV_GRADE), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cv_text: result.enhanced_resume }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.detail || data.message || `Request failed (${res.status})`);
+      }
+      setResult({
+        score: data.score ?? 0,
+        grade: data.grade ?? "Average",
+        suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        enhanced_resume: data.enhanced_resume ?? result.enhanced_resume,
+        previousScore,
+      });
+    } catch (err) {
+      setError(err.message || "Failed to regrade. Check backend and CORS.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const parseEnhancedResumeIntoSections = (text) => {
+    const sectionPatterns = [
+      "PROFESSIONAL SUMMARY", "EXECUTIVE SUMMARY", "SUMMARY", "PROFILE",
+      "EXPERIENCE", "WORK EXPERIENCE", "EMPLOYMENT", "PROFESSIONAL EXPERIENCE",
+      "EDUCATION", "ACADEMIC", "QUALIFICATION", "DEGREE",
+      "SKILLS", "TECHNICAL SKILLS", "COMPETENCIES", "EXPERTISE",
+      "CERTIFICATIONS", "ACHIEVEMENTS", "PROJECTS",
+    ];
+    const sections = [];
+    const lines = text.split("\n");
+    let currentSection = { title: null, content: [] };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      const isHeader =
+        sectionPatterns.some((p) => trimmed.toUpperCase().startsWith(p) || trimmed.toUpperCase() === p) ||
+        (trimmed.length > 2 && trimmed.length < 50 && /^[A-Z\s\-]+$/.test(trimmed) && !trimmed.includes("  "));
+      const isSeparator = /^-{3,}$/.test(trimmed);
+
+      if (isHeader && !isSeparator && trimmed.length > 0) {
+        if (currentSection.content.length > 0 || currentSection.title) {
+          sections.push({ ...currentSection, content: currentSection.content.join("\n").trim() });
+        }
+        currentSection = { title: trimmed, content: [] };
+      } else if (!isSeparator && trimmed) {
+        currentSection.content.push(line);
+      }
+    }
+    if (currentSection.content.length > 0 || currentSection.title) {
+      sections.push({ ...currentSection, content: currentSection.content.join("\n").trim() });
+    }
+    if (sections.length === 0) {
+      sections.push({ title: null, content: text });
+    }
+    return sections;
+  };
+
+  const handleDownloadCV = () => {
+    if (!result?.enhanced_resume) return;
+    const doc = new jsPDF();
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const maxWidth = pageWidth - margin * 2;
+    const lineHeight = 6;
+    const sectionSpacing = 4;
+    let y = 20;
+
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 64, 175);
+    doc.text("Enhanced CV - AI Optimized", margin, y);
+    y += lineHeight * 2;
+
+    const sections = parseEnhancedResumeIntoSections(result.enhanced_resume);
+    doc.setTextColor(0, 0, 0);
+
+    sections.forEach((section) => {
+      if (y > 265) {
+        doc.addPage();
+        y = 20;
+      }
+      if (section.title) {
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(55, 65, 81);
+        doc.text(section.title, margin, y);
+        y += lineHeight + 2;
+      }
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(31, 41, 55);
+      const content = section.content || (section.title ? "" : result.enhanced_resume);
+      const contentLines = doc.splitTextToSize(content, maxWidth);
+      contentLines.forEach((line) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(line, margin, y);
+        y += lineHeight;
+      });
+      y += sectionSpacing;
+    });
+
+    doc.save(`Enhanced_CV_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   const gradeColor = result ? GRADE_COLORS[result.grade] || "bg-gray-500 text-white" : "";
 
   return (
@@ -180,6 +300,11 @@ const CvGrade = () => {
               <div className="flex items-center gap-2">
                 <span className="text-gray-600">Score:</span>
                 <span className="text-2xl font-bold text-gray-800">{result.score}/100</span>
+                {result.previousScore != null && (
+                  <span className="text-sm text-green-600 font-medium">
+                    (was {result.previousScore} ↑ +{result.score - result.previousScore})
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-600">Grade:</span>
@@ -188,34 +313,92 @@ const CvGrade = () => {
             </div>
 
             {result.suggestions.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Suggestions</h3>
-                <ul className="list-disc list-inside space-y-2 text-gray-700">
+              <div className="p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl mb-6">
+                <h3 className="text-lg font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Apply These Improvements
+                </h3>
+                <ul className="space-y-2 text-gray-700">
                   {result.suggestions.map((s, i) => (
-                    <li key={i}>{typeof s === "string" ? s : s.text || s}</li>
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-200 text-amber-800 text-sm font-bold flex-shrink-0">{i + 1}</span>
+                      <span>{typeof s === "string" ? s : s.text || s}</span>
+                    </li>
                   ))}
                 </ul>
               </div>
             )}
 
             {result.enhanced_resume && (
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-semibold text-gray-800">Enhanced resume</h3>
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-blue-50 via-white to-purple-50 border-2 border-blue-200 shadow-lg">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-800">AI-Enhanced Resume</h3>
+                      <p className="text-sm text-gray-600">Your finest CV — optimized by our AI model</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">✓ Improvements Applied</span>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                    >
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+                <div className="relative">
+                  <div className="absolute -top-1 -left-1 w-4 h-4 border-l-2 border-t-2 border-blue-400 rounded-tl-lg" />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 border-r-2 border-b-2 border-purple-400 rounded-br-lg" />
+                  <textarea
+                    readOnly
+                    value={result.enhanced_resume}
+                    rows={12}
+                    className="w-full px-5 py-4 border-2 border-blue-100 rounded-xl bg-white/80 text-gray-800 resize-y font-medium leading-relaxed focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3 justify-end">
                   <button
                     type="button"
-                    onClick={handleCopy}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                    onClick={handleRegradeEnhanced}
+                    disabled={loading}
+                    className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-orange-600 shadow-lg flex items-center gap-2 disabled:opacity-50"
                   >
-                    {copied ? "Copied!" : "Copy"}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Regrade Enhanced CV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadCV}
+                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 shadow-lg flex items-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download Finest CV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/choose_templates", { state: { enhancedResume: result?.enhanced_resume } })}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 shadow-lg flex items-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                    </svg>
+                    Use in Template
                   </button>
                 </div>
-                <textarea
-                  readOnly
-                  value={result.enhanced_resume}
-                  rows={12}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 resize-y"
-                />
               </div>
             )}
           </div>
