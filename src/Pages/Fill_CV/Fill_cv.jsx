@@ -750,10 +750,10 @@ const Fill_cv = () => {
       });
     };
 
-    // Enhanced download function - PDF uses programmatic jsPDF (editable text), PNG uses html2canvas
+    // Enhanced download function — visual templates use html2canvas for PDF/PNG; others use text jsPDF for PDF
     const handleDownload = async (format = 'pdf', useEditableFilename = false) => {
-      // PDFs that mirror the on-screen layout (html2canvas) — includes Template 1 so export matches the designed CV
-      const pdfUsesHtml2Canvas = [1, 9, 10, 11, 12, 13, 14, 15, 16].includes(templateId);
+      // PDFs that mirror the on-screen layout (html2canvas) — same look as the editor (incl. Template 2 two-column design)
+      const pdfUsesHtml2Canvas = [1, 2, 9, 10, 11, 12, 13, 14, 15, 16].includes(templateId);
       const useVisualPdf = format === 'pdf' && pdfUsesHtml2Canvas;
 
       if (!cvRef.current && (format === 'png' || useVisualPdf)) {
@@ -761,7 +761,7 @@ const Fill_cv = () => {
         return;
       }
 
-      // PDF: Templates 1, 9–16 use html2canvas (pixel-perfect); others use programmatic jsPDF
+      // PDF: listed templates use html2canvas (WYSIWYG); remaining templates use programmatic jsPDF (plain text layout)
       if (format === 'pdf' && !useVisualPdf) {
         setIsDownloading(true);
         setDownloadProgress(30);
@@ -797,7 +797,7 @@ const Fill_cv = () => {
         return;
       }
 
-      // PNG or visual PDF (templates 1, 9–16): html2canvas for pixel-perfect capture
+      // PNG or visual PDF: html2canvas for pixel-perfect capture
       setIsDownloading(true);
       setDownloadProgress(10);
 
@@ -806,6 +806,7 @@ const Fill_cv = () => {
       let template1Backups = [];
       let template10Backups = [];
       let template11Backups = [];
+      let template2Backups = [];
       let template12Backups = [];
       let template13Backups = [];
       let template14AncestorBackups = [];
@@ -815,6 +816,7 @@ const Fill_cv = () => {
         
         // If the ref is on a wrapper, find the actual template div
         const template1El = templateId === 1 ? element.querySelector('[data-template1]') : null;
+        const template2El = templateId === 2 ? element.querySelector('[data-template2]') : null;
         const template10El = templateId === 10 ? element.querySelector('[data-template10]') : null;
         const template11El = templateId === 11 ? element.querySelector('[data-template11]') : null;
         const template12El = templateId === 12 ? element.querySelector('[data-template12]') : null;
@@ -822,7 +824,7 @@ const Fill_cv = () => {
         const template14El = templateId === 14 ? element.querySelector('[data-template14]') : null;
         const template15El = templateId === 15 ? element.querySelector('[data-template15]') : null;
         const template16El = templateId === 16 ? element.querySelector('[data-template16]') : null;
-        const templateDiv = template1El || template10El || template11El || template12El || template13El || template14El || template15El || template16El || element.querySelector('div[style*="height"], div[class*="max-w"]');
+        const templateDiv = template1El || template2El || template10El || template11El || template12El || template13El || template14El || template15El || template16El || element.querySelector('div[style*="height"], div[class*="max-w"]');
         if (templateDiv && templateDiv !== element) {
           // Check if templateDiv is a direct child or nested
           const isDirectChild = Array.from(element.children).includes(templateDiv);
@@ -830,8 +832,8 @@ const Fill_cv = () => {
             element = templateDiv;
           }
         }
-        // Template 10, 11, 12, 13, 14 & 16: scroll into view so html2canvas captures correctly
-        if ((templateId === 1 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) && element) {
+        // Scroll into view so html2canvas captures correctly
+        if ((templateId === 1 || templateId === 2 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) && element) {
           element.scrollIntoView({ behavior: 'instant', block: 'start' });
           await new Promise(resolve => setTimeout(resolve, 150));
           // Template 14: also scroll to end so education section at bottom is fully laid out
@@ -862,7 +864,7 @@ const Fill_cv = () => {
         element.style.overflow = 'visible';
         element.style.height = 'auto';
         element.style.maxHeight = 'none';
-        element.style.minHeight = (templateId === 1 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) ? '0' : element.style.minHeight; // Template 1 & 10–16: avoid fixed min-height clipping / blank PDF pages
+        element.style.minHeight = (templateId === 1 || templateId === 2 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) ? '0' : element.style.minHeight; // avoid fixed min-height clipping / blank PDF pages
         element.style.border = 'none';
         element.style.boxShadow = 'none';
         element.style.position = 'relative';
@@ -967,6 +969,36 @@ const Fill_cv = () => {
             el.style.flex = 'none';
             return;
           }
+          // Template 2 Summary: sibling <h3> is full-width — generic math leaves ~0px; use inner column width (minus padding)
+          if (templateId === 2 && el.hasAttribute('data-template2-summary')) {
+            const col = el.closest('[data-template2-right]');
+            let inner = 0;
+            if (col) {
+              const cs = getComputedStyle(col);
+              const pl = parseFloat(cs.paddingLeft) || 0;
+              const pr = parseFloat(cs.paddingRight) || 0;
+              inner = (col.clientWidth || col.offsetWidth) - pl - pr;
+            }
+            if (inner < 200) {
+              const t2 = el.closest('[data-template2]');
+              const flexRow = t2?.querySelector(':scope > div.flex');
+              const rightCol = flexRow?.children?.[2];
+              if (rightCol) {
+                const cs2 = getComputedStyle(rightCol);
+                const pl2 = parseFloat(cs2.paddingLeft) || 0;
+                const pr2 = parseFloat(cs2.paddingRight) || 0;
+                inner = (rightCol.clientWidth || rightCol.offsetWidth) - pl2 - pr2;
+              }
+            }
+            const pw = Math.max(280, inner - 4);
+            el.style.width = `${pw}px`;
+            el.style.minWidth = `${pw}px`;
+            el.style.maxWidth = `${pw}px`;
+            el.style.boxSizing = 'border-box';
+            el.style.display = 'block';
+            el.style.flex = 'none';
+            return;
+          }
           const parent = el.parentElement;
           let w = 380;
           if (parent) {
@@ -1000,6 +1032,61 @@ const Fill_cv = () => {
             void element.offsetHeight;
             await new Promise(resolve => setTimeout(resolve, 30));
           }
+        }
+
+        // Template 2: html2canvas needs explicit two-column widths (Classic Elegant / max-w-3xl)
+        if (templateId === 2) {
+          const t2 = element.querySelector('[data-template2]') || element;
+          template2Backups.push({
+            el: t2,
+            props: ['width', 'minWidth', 'maxWidth', 'height'],
+            vals: [t2.style.width, t2.style.minWidth, t2.style.maxWidth, t2.style.height],
+          });
+          t2.style.width = '768px';
+          t2.style.minWidth = '768px';
+          t2.style.maxWidth = '768px';
+          t2.style.height = 'auto';
+          const flexRow = t2.querySelector(':scope > div.flex');
+          if (flexRow) {
+            template2Backups.push({
+              el: flexRow,
+              props: ['width', 'display'],
+              vals: [flexRow.style.width, flexRow.style.display],
+            });
+            flexRow.style.width = '100%';
+            flexRow.style.display = 'flex';
+            const rowKids = [...flexRow.children];
+            const leftCol = rowKids[0];
+            const rightCol = rowKids[2];
+            if (leftCol) {
+              template2Backups.push({
+                el: leftCol,
+                props: ['width', 'minWidth', 'maxWidth', 'flex', 'flexShrink'],
+                vals: [leftCol.style.width, leftCol.style.minWidth, leftCol.style.maxWidth, leftCol.style.flex, leftCol.style.flexShrink],
+              });
+              leftCol.style.width = '256px';
+              leftCol.style.minWidth = '256px';
+              leftCol.style.maxWidth = '256px';
+              leftCol.style.flex = 'none';
+              leftCol.style.flexShrink = '0';
+            }
+            if (rightCol) {
+              template2Backups.push({
+                el: rightCol,
+                props: ['flex', 'minWidth', 'maxWidth', 'width', 'flexShrink', 'boxSizing'],
+                vals: [rightCol.style.flex, rightCol.style.minWidth, rightCol.style.maxWidth, rightCol.style.width, rightCol.style.flexShrink, rightCol.style.boxSizing],
+              });
+              const rightW = 768 - 256 - 1;
+              rightCol.style.flex = 'none';
+              rightCol.style.flexShrink = '0';
+              rightCol.style.minWidth = `${rightW}px`;
+              rightCol.style.width = `${rightW}px`;
+              rightCol.style.maxWidth = `${rightW}px`;
+              rightCol.style.boxSizing = 'border-box';
+            }
+          }
+          void element.offsetHeight;
+          await new Promise((resolve) => setTimeout(resolve, 80));
         }
 
         let template9GridDims = null;
@@ -1228,11 +1315,18 @@ const Fill_cv = () => {
         if (templateId === 1) {
           contentHeight = Math.max(contentHeight, element.scrollHeight) + 32;
         }
+        if (templateId === 2) {
+          contentHeight = Math.max(contentHeight, element.scrollHeight) + 24;
+        }
 
         // Template 1: use exact layout width (not scrollWidth) so html2canvas has no white side gutters
         if (templateId === 1) {
           const rw = Math.round(element.getBoundingClientRect().width);
           if (rw > 0) contentWidth = rw;
+        }
+        if (templateId === 2) {
+          const rw2 = Math.round(element.getBoundingClientRect().width);
+          if (rw2 > 0) contentWidth = rw2;
         }
 
         // High-quality canvas capture - match edit menu appearance
@@ -1640,6 +1734,33 @@ const Fill_cv = () => {
                 el.style.minWidth = '100%';
                 el.style.maxWidth = '100%';
                 el.style.boxSizing = 'border-box';
+              } else if (templateId === 2 && el.hasAttribute('data-template2-summary')) {
+                const col = el.closest('[data-template2-right]');
+                let inner = 0;
+                if (col) {
+                  const cs = clonedElement.ownerDocument.defaultView.getComputedStyle(col);
+                  const pl = parseFloat(cs.paddingLeft) || 0;
+                  const pr = parseFloat(cs.paddingRight) || 0;
+                  inner = (col.clientWidth || col.offsetWidth) - pl - pr;
+                }
+                if (inner < 200) {
+                  const t2 = el.closest('[data-template2]');
+                  const flexRow = t2?.querySelector(':scope > div.flex');
+                  const rightCol = flexRow?.children?.[2];
+                  if (rightCol) {
+                    const cs2 = clonedElement.ownerDocument.defaultView.getComputedStyle(rightCol);
+                    const pl2 = parseFloat(cs2.paddingLeft) || 0;
+                    const pr2 = parseFloat(cs2.paddingRight) || 0;
+                    inner = (rightCol.clientWidth || rightCol.offsetWidth) - pl2 - pr2;
+                  }
+                }
+                const pw = Math.max(280, inner - 4);
+                el.style.width = `${pw}px`;
+                el.style.minWidth = `${pw}px`;
+                el.style.maxWidth = `${pw}px`;
+                el.style.boxSizing = 'border-box';
+                el.style.display = 'block';
+                el.style.flex = 'none';
               } else {
                 const parent = el.parentElement;
                 let w = 350;
@@ -1690,6 +1811,43 @@ const Fill_cv = () => {
                 if (leftCol) {
                   leftCol.style.width = '256px';
                   leftCol.style.minWidth = '256px';
+                }
+              }
+            }
+
+            // Template 2: two-column flex + fixed width so export matches editor (Classic Elegant)
+            if (templateId === 2) {
+              const t2 = clonedElement.hasAttribute('data-template2') ? clonedElement : clonedElement.querySelector('[data-template2]');
+              if (t2) {
+                t2.style.width = '768px';
+                t2.style.minWidth = '768px';
+                t2.style.maxWidth = '768px';
+                t2.style.height = 'auto';
+                t2.style.boxSizing = 'border-box';
+                const flexRow = t2.querySelector(':scope > div.flex');
+                if (flexRow) {
+                  flexRow.style.display = 'flex';
+                  flexRow.style.width = '100%';
+                  const rowKids = [...flexRow.children];
+                  const leftCol = rowKids[0];
+                  const rightCol = rowKids[2];
+                  if (leftCol) {
+                    leftCol.style.width = '256px';
+                    leftCol.style.minWidth = '256px';
+                    leftCol.style.maxWidth = '256px';
+                    leftCol.style.flex = 'none';
+                    leftCol.style.flexShrink = '0';
+                  }
+                  if (rightCol) {
+                    // Explicit width so Summary RichTextBlock can resolve full inner width in clone
+                    const rightW = 768 - 256 - 1;
+                    rightCol.style.flex = 'none';
+                    rightCol.style.flexShrink = '0';
+                    rightCol.style.minWidth = `${rightW}px`;
+                    rightCol.style.width = `${rightW}px`;
+                    rightCol.style.maxWidth = `${rightW}px`;
+                    rightCol.style.boxSizing = 'border-box';
+                  }
                 }
               }
             }
@@ -2217,6 +2375,9 @@ const Fill_cv = () => {
           if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
         });
         template11Backups.forEach(({ el, props, vals }) => {
+          if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
+        });
+        template2Backups.forEach(({ el, props, vals }) => {
           if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
         });
         template12Backups.forEach(({ el, props, vals }) => {
@@ -4654,7 +4815,7 @@ const Fill_cv = () => {
         const T2Gold = "text-amber-800";
         const T2Divider = <div className="w-px bg-amber-700/60 self-stretch" />;
         return (
-          <div className="w-full max-w-3xl mx-auto bg-white overflow-hidden font-serif" style={{ height: "1100px" }}>
+          <div data-template2 className="w-full max-w-3xl mx-auto bg-white overflow-hidden font-serif" style={{ height: "1100px" }}>
             {/* Sage green header */}
             <div className="px-8 py-6" style={{ backgroundColor: "#d4e4d4" }}>
               <input type="text" value={nametemp2} onChange={(e) => setNametemp2(e.target.value)} className="text-3xl font-bold bg-transparent w-full uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" style={{ color: "#2d5a3d" }} placeholder="JOHN DOE" />
@@ -4696,10 +4857,17 @@ const Fill_cv = () => {
                 </div>
               </div>
               {T2Divider}
-              <div className="flex-1 p-6 space-y-6">
-                <div>
+              <div data-template2-right className="flex-1 min-w-0 p-6 space-y-6">
+                <div className="w-full min-w-0">
                   <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2 ${CV_SEC_H3}`}>SUMMARY</h3>
-                  <RichTextBlock value={profileinfotemp2} onChange={setProfileinfoTemp2} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded-md px-2 py-1.5" minHeight="80px" placeholder="Professional summary..." />
+                  <RichTextBlock
+                    data-template2-summary
+                    value={profileinfotemp2}
+                    onChange={setProfileinfoTemp2}
+                    className="text-sm bg-transparent w-full min-w-0 block text-gray-800 leading-relaxed focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded-md px-2 py-1.5"
+                    minHeight="80px"
+                    placeholder="Professional summary..."
+                  />
                 </div>
                 <div>
                   <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-3 ${CV_SEC_H3}`}>WORK EXPERIENCE</h3>
