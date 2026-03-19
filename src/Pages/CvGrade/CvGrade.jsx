@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import Naavbar from "../Naavbar";
 import { getApiUrl } from "../../config/api";
 import API_CONFIG from "../../config/api";
-import { jsPDF } from "jspdf";
 
 const GRADE_COLORS = {
   Poor: "bg-red-500 text-white",
@@ -146,95 +145,8 @@ const CvGrade = () => {
     }
   };
 
-  const parseEnhancedResumeIntoSections = (text) => {
-    const sectionPatterns = [
-      "PROFESSIONAL SUMMARY", "EXECUTIVE SUMMARY", "SUMMARY", "PROFILE",
-      "EXPERIENCE", "WORK EXPERIENCE", "EMPLOYMENT", "PROFESSIONAL EXPERIENCE",
-      "EDUCATION", "ACADEMIC", "QUALIFICATION", "DEGREE",
-      "SKILLS", "TECHNICAL SKILLS", "COMPETENCIES", "EXPERTISE",
-      "CERTIFICATIONS", "ACHIEVEMENTS", "PROJECTS",
-    ];
-    const sections = [];
-    const lines = text.split("\n");
-    let currentSection = { title: null, content: [] };
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      const isHeader =
-        sectionPatterns.some((p) => trimmed.toUpperCase().startsWith(p) || trimmed.toUpperCase() === p) ||
-        (trimmed.length > 2 && trimmed.length < 50 && /^[A-Z\s\-]+$/.test(trimmed) && !trimmed.includes("  "));
-      const isSeparator = /^-{3,}$/.test(trimmed);
-
-      if (isHeader && !isSeparator && trimmed.length > 0) {
-        if (currentSection.content.length > 0 || currentSection.title) {
-          sections.push({ ...currentSection, content: currentSection.content.join("\n").trim() });
-        }
-        currentSection = { title: trimmed, content: [] };
-      } else if (!isSeparator && trimmed) {
-        currentSection.content.push(line);
-      }
-    }
-    if (currentSection.content.length > 0 || currentSection.title) {
-      sections.push({ ...currentSection, content: currentSection.content.join("\n").trim() });
-    }
-    if (sections.length === 0) {
-      sections.push({ title: null, content: text });
-    }
-    return sections;
-  };
-
-  const handleDownloadCV = () => {
-    if (!result?.enhanced_resume) return;
-    const doc = new jsPDF();
-    const margin = 20;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const maxWidth = pageWidth - margin * 2;
-    const lineHeight = 6;
-    const sectionSpacing = 4;
-    let y = 20;
-
-    doc.setFontSize(20);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 64, 175);
-    doc.text("Enhanced CV - AI Optimized", margin, y);
-    y += lineHeight * 2;
-
-    const sections = parseEnhancedResumeIntoSections(result.enhanced_resume);
-    doc.setTextColor(0, 0, 0);
-
-    sections.forEach((section) => {
-      if (y > 265) {
-        doc.addPage();
-        y = 20;
-      }
-      if (section.title) {
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(55, 65, 81);
-        doc.text(section.title, margin, y);
-        y += lineHeight + 2;
-      }
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(31, 41, 55);
-      const content = section.content || (section.title ? "" : result.enhanced_resume);
-      const contentLines = doc.splitTextToSize(content, maxWidth);
-      contentLines.forEach((line) => {
-        if (y > 270) {
-          doc.addPage();
-          y = 20;
-        }
-        doc.text(line, margin, y);
-        y += lineHeight;
-      });
-      y += sectionSpacing;
-    });
-
-    doc.save(`Enhanced_CV_${new Date().toISOString().slice(0, 10)}.pdf`);
-  };
-
   const gradeColor = result ? GRADE_COLORS[result.grade] || "bg-gray-500 text-white" : "";
+  const hasUseInTemplate = localStorage.getItem("useInTemplateAccess") === "true";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
@@ -380,23 +292,27 @@ const CvGrade = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={handleDownloadCV}
-                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 shadow-lg flex items-center gap-2"
+                    onClick={() => {
+                      const hasUseInTemplate = localStorage.getItem('useInTemplateAccess') === 'true';
+                      if (!hasUseInTemplate) {
+                        sessionStorage.setItem('pendingEnhancedResume', result?.enhanced_resume || '');
+                        navigate('/payment', { state: { product: 'useInTemplate', message: 'Pay NRS 500 to use your enhanced CV in templates.' } });
+                      } else {
+                        navigate('/choose_templates', { state: { enhancedResume: result?.enhanced_resume } });
+                      }
+                    }}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 shadow-lg flex items-center gap-2 relative"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download Finest CV
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/choose_templates", { state: { enhancedResume: result?.enhanced_resume } })}
-                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 shadow-lg flex items-center gap-2"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {!hasUseInTemplate && (
+                      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    )}
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                     </svg>
-                    Use in Template
+                    <span>Use in Template</span>
+                    <span className="px-2 py-0.5 bg-white/25 rounded-md text-sm font-medium">NRS 500</span>
                   </button>
                 </div>
               </div>

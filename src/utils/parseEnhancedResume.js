@@ -41,8 +41,15 @@ export function parseEnhancedResumeToStructuredData(text) {
     firstContentIdx = 1;
   }
   const firstLine = lines[firstContentIdx];
-  if (firstLine && firstLine.length < 100 && /^[A-Z\s\-&]+$/.test(firstLine)) {
-    result.profession = firstLine;
+  const secondLine = lines[firstContentIdx + 1];
+  if (firstLine && firstLine.length < 100) {
+    const looksLikeName = /^[A-Za-z][a-z]*\s+[A-Za-z][a-z]*(\s+[A-Za-z][a-z]*)?$/.test(firstLine.trim()) && firstLine.split(/\s+/).length <= 4;
+    const looksLikeProfession = /^[A-Z\s\-&]+$/.test(firstLine) && firstLine.length > 10;
+    if (looksLikeName) result.name = firstLine.trim();
+    else if (looksLikeProfession) result.profession = firstLine;
+  }
+  if (!result.profession && secondLine && secondLine.length < 100 && /^[A-Z\s\-&]+$/.test(secondLine)) {
+    result.profession = secondLine;
   }
 
   for (let i = 0; i < lines.length; i++) {
@@ -91,10 +98,48 @@ export function parseEnhancedResumeToStructuredData(text) {
       if (current.role || current.responsibilities.length) result.experiences.push(current);
     } else if (lineLower.includes("education") || lineLower.includes("academic")) {
       const content = getSectionContent(i);
+      // Avoid mapping job bullets / IT duties into Education (e.g. "Troubleshooting…")
+      const jobDutyLine = (s) =>
+        /\b(troubleshoot|troubleshooting|deployed|implemented|managed|leading\s|led\s|resolved|stakeholder|customers?|ticket|incident|agile|scrum|WAN|LAN|WLAN|backup|monitoring|configured|administered|enterprise|network\s+admin|technical\s+support)\b/i.test(
+          s
+        );
+      const eduKeywordLine = (s) =>
+        /\b(bachelor|b\.?\s*s\.?|b\.?\s*a\.?|master|m\.?\s*s\.?|mba|m\.?tech|ph\.?d|doctorate|associate|diploma|degree|ged|high\s+school|secondary|university|college|institute|academy|faculty|graduate|undergraduate|postgraduate|qualification|certification|gpa|honors?|cum\s+laude|dean'?s\s+list)\b/i.test(
+          s
+        );
+      const institutionLine = (s) => /\b(university|college|institute|academy|school|polytechnic)\b/i.test(s);
+
+      const goodLines = content.filter((c) => {
+        const t = c.trim();
+        if (t.length < 6 || t.length > 180) return false;
+        if (/^[-•*]/.test(t)) return false;
+        if (jobDutyLine(t) && !eduKeywordLine(t)) return false;
+        // Skip stray one-letter tails (e.g. "… q") unless it clearly looks like education
+        if (/\s[a-z]$/i.test(t) && t.length < 48 && !eduKeywordLine(t)) return false;
+        return eduKeywordLine(t) || institutionLine(t);
+      });
+
       for (const c of content) {
-        if (/\d{4}|\d{1,2}\/\d{4}/.test(c) && !result.education.date) result.education.date = c;
-        else if (c.length > 10 && c.length < 100 && !result.education.degree && !c.toLowerCase().includes("company")) result.education.degree = c;
-        else if (c.length > 5 && !result.education.school && c !== result.education.degree && !c.toLowerCase().includes("company")) result.education.school = c;
+        const t = c.trim();
+        if (!result.education.date && /\d{4}/.test(t) && (!jobDutyLine(t) || eduKeywordLine(t))) {
+          const m = t.match(/\d{4}\s*[-–/]\s*\d{4}|\d{1,2}\/\d{4}\s*[-–]\s*(?:current|\d{1,2}\/\d{4}|\d{4})|\d{4}/i);
+          if (m) result.education.date = m[0];
+        }
+      }
+
+      if (goodLines.length >= 1) {
+        const degCandidate =
+          goodLines.find((c) => eduKeywordLine(c) && !institutionLine(c)) ||
+          goodLines.find((c) => eduKeywordLine(c)) ||
+          goodLines[0];
+        const schCandidate = goodLines.find((c) => c.trim() !== degCandidate.trim() && institutionLine(c)) ||
+          goodLines.find((c) => c.trim() !== degCandidate.trim());
+        result.education.degree = degCandidate.trim();
+        if (schCandidate) result.education.school = schCandidate.trim();
+        if (institutionLine(degCandidate) && !schCandidate && goodLines.length === 1) {
+          result.education.school = degCandidate.trim();
+          result.education.degree = "";
+        }
       }
     }
   }
@@ -105,8 +150,26 @@ export function parseEnhancedResumeToStructuredData(text) {
   }
 
   if (result.skills.length === 0) {
-    const skillKeywords = text.match(/\b(JavaScript|Python|React|Node\.?js|AWS|SQL|Java|C\+\+|HTML|CSS|Docker|Kubernetes|Git|Linux|Excel|Management|Leadership|Network|IT|Administration)\b/gi);
+    const skillKeywords = text.match(/\b(JavaScript|Python|React|Node\.?js|AWS|SQL|Java|C\+\+|HTML|CSS|Docker|Kubernetes|Git|Linux|Excel|Management|Leadership|Network|IT|Administration|WAN|LAN|WLAN|tracking|deployment|backup|enterprise)\b/gi);
     if (skillKeywords) result.skills = [...new Set(skillKeywords)].slice(0, 10);
+  }
+
+  // Extract name: look for "Name:" prefix
+  if (!result.name) {
+    const nameLine = lines.find((l) => /^name\s*:\s*/i.test(l));
+    if (nameLine) result.name = nameLine.replace(/^name\s*:\s*/i, "").trim();
+  }
+
+  // Fallback: if content has bullet points but no structured experience, create one experience from all bullets
+  if (result.experiences.length === 0) {
+    const bulletLines = lines.filter(
+      (l) =>
+        l.startsWith("-") || l.startsWith("•") || l.startsWith("*") || (l.length > 50 && !sectionHeaders.some((h) => l.toLowerCase().startsWith(h)))
+    );
+    const responsibilities = bulletLines.map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter((r) => r.length > 10);
+    if (responsibilities.length > 0) {
+      result.experiences = [{ role: "Professional Experience", company: "", dateRange: "", responsibilities }];
+    }
   }
 
   return result;

@@ -4,10 +4,13 @@ import { useAuth } from '../../context/AuthContext';
 import { getApiUrl } from '../../config/api';
 import API_CONFIG from '../../config/api';
 
+const PRODUCT_USE_IN_TEMPLATE = 'useInTemplate';
+const PRODUCT_PREMIUM_TEMPLATES = 'premiumTemplates';
+
 const PaymentCallback = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { upgradeToPremium } = useAuth();
+  const { upgradeToPremium, upgradeUseInTemplate } = useAuth();
   const [status, setStatus] = useState('verifying');
   const [error, setError] = useState('');
 
@@ -29,7 +32,15 @@ const PaymentCallback = () => {
             (typeof data.status === 'string' && data.status.toLowerCase() === 'completed') ||
             data.success === true;
           if (isSuccess) {
-            upgradeToPremium();
+            const product = sessionStorage.getItem('paymentProduct') || PRODUCT_USE_IN_TEMPLATE;
+            if (product === PRODUCT_PREMIUM_TEMPLATES) {
+              localStorage.setItem('isPremium', 'true');
+              upgradeToPremium();
+            } else {
+              localStorage.setItem('useInTemplateAccess', 'true');
+              upgradeUseInTemplate();
+            }
+            sessionStorage.removeItem('paymentProduct');
             setStatus('success');
           } else {
             setError(data.message || data.detail || 'Verification failed');
@@ -46,7 +57,7 @@ const PaymentCallback = () => {
       setError('Invalid or missing payment data');
       setStatus('error');
     }
-  }, [pidx, paymentStatus, upgradeToPremium]);
+  }, [pidx, paymentStatus, upgradeToPremium, upgradeUseInTemplate]);
 
   if (status === 'verifying') {
     return (
@@ -129,10 +140,24 @@ const PaymentCallback = () => {
           Your Khalti payment was successful. You now have access to premium features and templates.
         </p>
         <button
-          onClick={() => navigate('/choose_templates')}
+          onClick={() => {
+            const product = sessionStorage.getItem('paymentProduct') || PRODUCT_USE_IN_TEMPLATE;
+            if (product === PRODUCT_PREMIUM_TEMPLATES) {
+              localStorage.setItem('isPremium', 'true');
+              upgradeToPremium();
+              navigate('/choose_templates');
+            } else {
+              localStorage.setItem('useInTemplateAccess', 'true');
+              upgradeUseInTemplate();
+              const enhancedResume = sessionStorage.getItem('pendingEnhancedResume') || '';
+              sessionStorage.removeItem('pendingEnhancedResume');
+              navigate('/choose_templates', { state: enhancedResume ? { enhancedResume } : {} });
+            }
+            sessionStorage.removeItem('paymentProduct');
+          }}
           className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 transition-colors"
         >
-          Continue to templates
+          Continue
         </button>
         <button
           onClick={() => navigate('/')}

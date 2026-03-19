@@ -4,22 +4,53 @@ import { useAuth } from '../../context/AuthContext';
 import { getApiUrl } from '../../config/api';
 import API_CONFIG from '../../config/api';
 
+const PRODUCT_USE_IN_TEMPLATE = 'useInTemplate';
+const PRODUCT_PREMIUM_TEMPLATES = 'premiumTemplates';
+
 const PaymentSuccess = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { upgradeToPremium } = useAuth();
+  const { upgradeToPremium, upgradeUseInTemplate } = useAuth();
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState('');
 
+  // eSewa sends data as Base64 JSON in ?data= param, OR as direct params
   const transactionUuid = searchParams.get('transaction_uuid') || searchParams.get('oid');
   const totalAmount = searchParams.get('total_amount') || searchParams.get('amt');
+  const dataParam = searchParams.get('data');
 
   useEffect(() => {
-    if (transactionUuid && totalAmount) {
+    let uuid = transactionUuid;
+    let amount = totalAmount;
+
+    if (dataParam && (!uuid || !amount)) {
+      try {
+        const decoded = JSON.parse(atob(dataParam));
+        uuid = uuid || decoded.transaction_uuid || decoded.transaction_code;
+        amount = amount || String(decoded.total_amount || '').replace(/,/g, '');
+        if (decoded.status === 'COMPLETE' || decoded.status === 'complete') {
+          const product = sessionStorage.getItem('paymentProduct') || PRODUCT_USE_IN_TEMPLATE;
+          if (product === PRODUCT_PREMIUM_TEMPLATES) {
+            localStorage.setItem('isPremium', 'true');
+            upgradeToPremium();
+          } else {
+            localStorage.setItem('useInTemplateAccess', 'true');
+            upgradeUseInTemplate();
+          }
+          sessionStorage.removeItem('paymentProduct');
+          setVerified(true);
+          return;
+        }
+      } catch (e) {
+        console.warn('Could not decode eSewa data param', e);
+      }
+    }
+
+    if (uuid && amount) {
       setVerifying(true);
       fetch(
-        `${getApiUrl(API_CONFIG.ENDPOINTS.ESEWA_VERIFY)}?total_amount=${encodeURIComponent(totalAmount)}&transaction_uuid=${encodeURIComponent(transactionUuid)}`,
+        `${getApiUrl(API_CONFIG.ENDPOINTS.ESEWA_VERIFY)}?total_amount=${encodeURIComponent(amount)}&transaction_uuid=${encodeURIComponent(uuid)}`,
         { method: 'GET' }
       )
         .then((res) => res.json())
@@ -31,7 +62,15 @@ const PaymentSuccess = () => {
             data.status === 'success' ||
             data.verified === true;
           if (isSuccess) {
-            upgradeToPremium();
+            const product = sessionStorage.getItem('paymentProduct') || PRODUCT_USE_IN_TEMPLATE;
+            if (product === PRODUCT_PREMIUM_TEMPLATES) {
+              localStorage.setItem('isPremium', 'true');
+              upgradeToPremium();
+            } else {
+              localStorage.setItem('useInTemplateAccess', 'true');
+              upgradeUseInTemplate();
+            }
+            sessionStorage.removeItem('paymentProduct');
             setVerified(true);
           } else {
             setError(data.message || data.detail || 'Verification failed');
@@ -40,11 +79,10 @@ const PaymentSuccess = () => {
         .catch(() => setError('Could not verify payment'))
         .finally(() => setVerifying(false));
     } else {
-      // No verification params - user may have landed here without completing payment
-      setError('No payment data received. If you completed payment, please try selecting a template.');
-      setVerified(true); // show UI, but we did not call upgradeToPremium
+      setError('No payment data received. Click "Continue to templates" below to restore access if you were charged.');
+      setVerified(true);
     }
-  }, [transactionUuid, totalAmount, upgradeToPremium]);
+  }, [transactionUuid, totalAmount, dataParam, upgradeToPremium, upgradeUseInTemplate]);
 
   if (verifying) {
     return (
@@ -86,10 +124,24 @@ const PaymentSuccess = () => {
           </>
         )}
         <button
-          onClick={() => navigate('/choose_templates')}
+          onClick={() => {
+            const product = sessionStorage.getItem('paymentProduct') || PRODUCT_USE_IN_TEMPLATE;
+            if (product === PRODUCT_PREMIUM_TEMPLATES) {
+              localStorage.setItem('isPremium', 'true');
+              upgradeToPremium();
+              navigate('/choose_templates');
+            } else {
+              localStorage.setItem('useInTemplateAccess', 'true');
+              upgradeUseInTemplate();
+              const enhancedResume = sessionStorage.getItem('pendingEnhancedResume') || '';
+              sessionStorage.removeItem('pendingEnhancedResume');
+              navigate('/choose_templates', { state: enhancedResume ? { enhancedResume } : {} });
+            }
+            sessionStorage.removeItem('paymentProduct');
+          }}
           className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700 transition-colors"
         >
-          Continue to templates
+          Continue
         </button>
         <button
           onClick={() => navigate('/')}

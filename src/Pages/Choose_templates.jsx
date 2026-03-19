@@ -16,6 +16,7 @@ import temp12 from "./assets/temp12.png";
 import temp13 from "./assets/temp13.png";
 import temp14 from "./assets/temp14.png";
 import temp15 from "./assets/temp15.png";
+import temp16 from "./assets/temp16.png";
 import { useAuth } from "../context/AuthContext";
 
 const Choose_templates = () => {
@@ -28,25 +29,36 @@ const Choose_templates = () => {
     const [previewTemplate, setPreviewTemplate] = useState(null);
     const [premiumBlockMessage, setPremiumBlockMessage] = useState("");
     const navigate = useNavigate();
-    const { isPremium } = useAuth();
+    const { upgradeToPremium } = useAuth();
+    const [premiumCheck, setPremiumCheck] = useState(0);
 
-    // Template data - 15 professional CV designs (all free to access)
+    // Read directly from localStorage - most reliable source of truth
+    const isPremium = typeof window !== 'undefined' && localStorage.getItem('isPremium') === 'true';
+
+    const handleRestorePremium = () => {
+        localStorage.setItem('isPremium', 'true');
+        upgradeToPremium();
+        setPremiumCheck((c) => c + 1);
+    };
+
+    // Template data - Premium templates (2,5,7,11,14,16) require payment
     const templates = [
         { id: 1, image: temp1, name: "Modern Professional", category: "modern", popular: false },
-        { id: 2, image: temp2, name: "Classic Elegant", category: "classic", popular: false },
+        { id: 2, image: temp2, name: "Classic Elegant", category: "classic", popular: true },
         { id: 3, image: temp3, name: "Creative Design", category: "creative", popular: false },
         { id: 4, image: temp4, name: "Corporate Standard", category: "professional", popular: false },
-        { id: 5, image: temp5, name: "Minimalist Style", category: "modern", popular: false },
+        { id: 5, image: temp5, name: "Minimalist Style", category: "modern", popular: true },
         { id: 6, image: temp6, name: "Traditional Layout", category: "classic", popular: false },
-        { id: 7, image: temp7, name: "Bold Creative", category: "creative", popular: false },
+        { id: 7, image: temp7, name: "Bold Creative", category: "creative", popular: true },
         { id: 8, image: temp8, name: "Executive Format", category: "professional", popular: false },
         { id: 9, image: temp9, name: "Contemporary Design", category: "modern", popular: false },
         { id: 10, image: temp10, name: "Timeless Classic", category: "classic", popular: false },
-        { id: 11, image: temp11, name: "Artistic Layout", category: "creative", popular: false },
+        { id: 11, image: temp11, name: "Executive Two-Column", category: "professional", popular: true },
         { id: 12, image: temp12, name: "Business Professional", category: "professional", popular: false },
         { id: 13, image: temp13, name: "ATS-Optimized", category: "professional", popular: false },
-        { id: 14, image: temp14, name: "Tech Developer", category: "modern", popular: false },
-        { id: 15, image: temp15, name: "Academic Scholar", category: "classic", popular: false }
+        { id: 14, image: temp14, name: "Classic Red Accent", category: "professional", popular: true },
+        { id: 15, image: temp15, name: "Clean Blue Header", category: "professional", popular: false },
+        { id: 16, image: temp16, name: "Professional Clean", category: "professional", popular: true }
     ];
 
     const categories = [
@@ -61,7 +73,7 @@ const Choose_templates = () => {
         const template = templates.find(t => t.id === templateId);
         
         if (template && template.popular && !isPremium) {
-            setPremiumBlockMessage("Premium content cannot be used unless you pay first. Complete payment to unlock this template.");
+            navigate("/payment", { state: { product: "premiumTemplates" } });
             return;
         }
         setPremiumBlockMessage("");
@@ -72,9 +84,16 @@ const Choose_templates = () => {
         if(selectedTemplate) {
             const template = templates.find(t => t.id === selectedTemplate);
             if (template && template.popular && !isPremium) {
-                setPremiumBlockMessage("Please pay first to use this premium template. Complete payment to continue.");
-                navigate("/payment");
+                setPremiumBlockMessage("Please pay NRS 250 to use this premium template. Complete payment to continue.");
+                navigate("/payment", { state: { product: "premiumTemplates" } });
                 return;
+            }
+            if (enhancedResume) {
+                try {
+                    sessionStorage.setItem('fillCvEnhancedResume', enhancedResume);
+                } catch {
+                    /* ignore quota */
+                }
             }
             navigate(`/fill_cv?templateId=${selectedTemplate}`, {
                 state: { 
@@ -131,12 +150,20 @@ const Choose_templates = () => {
               </div>
               <p className="text-sm text-amber-700">Premium content cannot be used unless you complete payment.</p>
             </div>
-            <button
-              onClick={() => { setPremiumBlockMessage(""); navigate("/payment"); }}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 transition-colors"
-            >
-              Pay now
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { handleRestorePremium(); setPremiumBlockMessage(""); }}
+                className="px-4 py-2 border-2 border-green-600 text-green-700 rounded-lg font-semibold hover:bg-green-50 transition-colors"
+              >
+                I already paid – Restore access
+              </button>
+              <button
+                onClick={() => { setPremiumBlockMessage(""); navigate("/payment", { state: { product: "premiumTemplates" } }); }}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 transition-colors"
+              >
+                Pay now
+              </button>
+            </div>
           </div>
         )}
         {enhancedResume && (
@@ -295,7 +322,11 @@ const Choose_templates = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleClick(template.id);
+                      if (template.popular && !isPremium) {
+                        navigate("/payment", { state: { product: "premiumTemplates" } });
+                      } else {
+                        handleClick(template.id);
+                      }
                     }}
                     className={`px-4 py-2 rounded-lg font-semibold transform hover:scale-105 transition-all ${
                       template.popular && !isPremium
@@ -384,9 +415,9 @@ const Choose_templates = () => {
                     onClick={() => {
                       const template = templates.find(t => t.id === previewTemplate.id);
                       if (template && template.popular && !isPremium) {
-                        setPremiumBlockMessage("Please pay first to use premium templates.");
+                        setPremiumBlockMessage("Please pay NRS 250 to use premium templates.");
                         closePreview();
-                        navigate("/payment");
+                        navigate("/payment", { state: { product: "premiumTemplates" } });
                       } else {
                         handleClick(previewTemplate.id);
                         closePreview();
@@ -411,15 +442,25 @@ const Choose_templates = () => {
       {/* Fixed Footer */}
       <footer className="fixed bottom-0 left-0 right-0 bg-white border-t-2 shadow-lg z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <button 
-            onClick={() => navigate('/payment')}
-            className="hidden sm:flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-          >
+          <div className="hidden sm:flex items-center gap-3">
+            <button 
+              onClick={() => navigate('/payment', { state: { product: 'premiumTemplates' } })}
+              className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+            >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
             </svg>
             Go Premium
           </button>
+            {!isPremium && (
+              <button
+                onClick={handleRestorePremium}
+                className="text-sm text-green-600 hover:text-green-800 font-semibold"
+              >
+                Already paid? Restore access
+              </button>
+            )}
+          </div>
           <div className="flex gap-4">
             <button 
               className="font-semibold text-lg text-blue-600 hover:text-blue-800 transition-colors px-6 py-2"

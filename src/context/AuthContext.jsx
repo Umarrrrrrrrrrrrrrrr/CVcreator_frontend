@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 
 const AuthContext = createContext();
 
@@ -13,6 +13,8 @@ export const useAuth = () => {
 const GUEST_KEY = 'isGuest';
 const TOKEN_KEY = 'accessToken';
 const REFRESH_KEY = 'refreshToken';
+const PREMIUM_KEY = 'isPremium'; // NRS 250 - Premium templates
+const USE_IN_TEMPLATE_KEY = 'useInTemplateAccess'; // NRS 500 - Use in Template feature
 
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -26,11 +28,27 @@ export const AuthProvider = ({ children }) => {
     return localStorage.getItem(TOKEN_KEY) || null;
   });
   const [isPremium, setIsPremium] = useState(() => {
-    return localStorage.getItem('isPremium') === 'true';
+    return localStorage.getItem(PREMIUM_KEY) === 'true';
+  });
+  const [useInTemplateAccess, setUseInTemplateAccess] = useState(() => {
+    return localStorage.getItem(USE_IN_TEMPLATE_KEY) === 'true';
   });
   const [isGuest, setIsGuest] = useState(() => {
     return sessionStorage.getItem(GUEST_KEY) === 'true';
   });
+
+  // Sync isPremium and useInTemplateAccess from localStorage on mount and when tab gains focus
+  useEffect(() => {
+    const syncAccess = () => {
+      const storedPremium = localStorage.getItem(PREMIUM_KEY) === 'true';
+      const storedUseInTemplate = localStorage.getItem(USE_IN_TEMPLATE_KEY) === 'true';
+      setIsPremium((prev) => (storedPremium ? true : prev));
+      setUseInTemplateAccess((prev) => (storedUseInTemplate ? true : prev));
+    };
+    syncAccess();
+    window.addEventListener('focus', syncAccess);
+    return () => window.removeEventListener('focus', syncAccess);
+  }, []);
 
   const login = (userData, tokens = null) => {
     setIsAuthenticated(true);
@@ -51,12 +69,14 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setAccessToken(null);
     setIsPremium(false);
+    setUseInTemplateAccess(false);
     setIsGuest(false);
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('user');
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
-    localStorage.removeItem('isPremium');
+    localStorage.removeItem(PREMIUM_KEY);
+    localStorage.removeItem(USE_IN_TEMPLATE_KEY);
     sessionStorage.removeItem(GUEST_KEY);
   };
 
@@ -67,13 +87,23 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.setItem(GUEST_KEY, 'true');
   };
 
-  const upgradeToPremium = () => {
+  const upgradeToPremium = useCallback(() => {
     setIsPremium(true);
-    localStorage.setItem('isPremium', 'true');
-  };
+    localStorage.setItem(PREMIUM_KEY, 'true');
+  }, []);
+
+  const upgradeUseInTemplate = useCallback(() => {
+    setUseInTemplateAccess(true);
+    localStorage.setItem(USE_IN_TEMPLATE_KEY, 'true');
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isPremium, upgradeToPremium, isGuest, enableGuestMode, getAccessToken }}>
+    <AuthContext.Provider value={{
+      isAuthenticated, user, login, logout,
+      isPremium, upgradeToPremium,
+      useInTemplateAccess, upgradeUseInTemplate,
+      isGuest, enableGuestMode, getAccessToken
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 // import html2pdf from "html2pdf.js";
 // import { html2pdf } from "html2pdf.js";
@@ -16,6 +16,64 @@ const stripHtml = (html) => {
   tmp.innerHTML = html;
   return tmp.textContent || tmp.innerText || '';
 };
+
+/** Recognize common CV section headers for organized preview */
+const ENHANCED_RESUME_SECTION_REGEX =
+  /^(professional\s+summary|executive\s+summary|summary|profile|about\s+me|skills?|technical\s+skills|core\s+competencies|competencies|expertise|work\s+experience|professional\s+experience|experience|employment|education|academic|qualifications?|certifications?|achievements?|projects?|contact|references?|languages?|interests?|objective|highlights?|key\s+skills)\s*:?\s*$/i;
+
+function EnhancedResumeOrganizedPreview({ text }) {
+  const lines = useMemo(() => (text || '').split('\n'), [text]);
+  return (
+    <div className="rounded-lg border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-3 max-h-[42vh] overflow-y-auto shadow-inner">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Organized preview</p>
+      <div className="space-y-0">
+        {lines.map((line, i) => {
+          const t = line.trimEnd();
+          const trimmed = t.trim();
+          if (!trimmed) return <div key={i} className="h-2 shrink-0" aria-hidden />;
+          if (ENHANCED_RESUME_SECTION_REGEX.test(trimmed)) {
+            const label = trimmed.replace(/:\s*$/, '').trim();
+            return (
+              <h3
+                key={i}
+                className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mt-3 first:mt-0 mb-1.5 pb-1 border-b border-indigo-200/80"
+              >
+                {label}
+              </h3>
+            );
+          }
+          if (/^[-•*▪]\s/.test(trimmed) || /^\d+[\.)]\s/.test(trimmed)) {
+            const body = trimmed.replace(/^[-•*▪]\s*/, '').replace(/^\d+[\.)]\s*/, '');
+            return (
+              <p key={i} className="text-xs text-slate-700 leading-relaxed pl-3 ml-1 my-1 border-l-2 border-indigo-200">
+                <span className="text-indigo-500 mr-1">•</span>
+                {body}
+              </p>
+            );
+          }
+          if (
+            trimmed.length >= 8 &&
+            trimmed.length <= 72 &&
+            trimmed === trimmed.toUpperCase() &&
+            /^[A-Z0-9\s\-&,\/']+$/.test(trimmed) &&
+            trimmed.split(/\s+/).length <= 10
+          ) {
+            return (
+              <p key={i} className="text-[11px] font-semibold text-slate-800 tracking-wide mt-2 mb-0.5">
+                {trimmed}
+              </p>
+            );
+          }
+          return (
+            <p key={i} className="text-xs text-slate-700 leading-relaxed my-1 break-words">
+              {trimmed}
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const imageToCircularDataUrl = (dataUrl, size = 144) => {
   return new Promise((resolve) => {
@@ -45,25 +103,64 @@ const imageToCircularDataUrl = (dataUrl, size = 144) => {
   });
 };
 
-const PREMIUM_TEMPLATE_IDS = []; // All templates free to access
+const PREMIUM_TEMPLATE_IDS = [2, 5, 7, 11, 14, 16]; // Premium templates - pay to access
 
 const TEMPLATE_NAMES = {
   1: "Modern Professional", 2: "Classic Elegant", 3: "Creative Design",
   4: "Corporate Standard", 5: "Minimalist Style", 6: "Traditional Layout",
   7: "Bold Creative", 8: "Executive Format", 9: "Contemporary Design",
-  10: "Timeless Classic", 11: "Artistic Layout", 12: "Business Professional",
-  13: "ATS-Optimized", 14: "Tech Developer", 15: "Academic Scholar"
+  10: "Timeless Classic", 11: "Executive Two-Column", 12: "Business Professional",
+  13: "ATS-Optimized", 14: "Classic Red Accent", 15: "Clean Blue Header",
+  16: "Professional Clean"
 };
+
+/** Section `<h3>` titles: vertically center label in row, left-aligned (match Template 1 bar behavior) */
+const CV_SEC_H3 =
+  'flex w-full min-w-0 items-center justify-start text-left min-h-[3rem] py-2 leading-normal box-border';
+/** Same, centered (sidebars / centered layouts) */
+const CV_SEC_H3_C =
+  'flex w-full min-w-0 items-center justify-center text-center min-h-[3rem] py-2 leading-normal box-border';
+/** Editable `<input>` section titles with border-b / underline */
+const CV_SEC_IN = 'min-h-[3rem] py-2.5 box-border leading-normal';
+
+/** Keeps AI-enhanced text available after refresh or direct URL (?templateId=) */
+const FILL_CV_ENHANCED_SESSION = 'fillCvEnhancedResume';
 
 const Fill_cv = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isPremium } = useAuth();
+  useAuth(); // Keep for upgradeToPremium if needed
+  // Read directly from localStorage - most reliable
+  const isPremium = typeof window !== 'undefined' && localStorage.getItem('isPremium') === 'true';
   // Read templateId from URL (persists across navigation) or state (from Choose_templates)
   const templateId = Number(location.state?.templateId ?? searchParams.get("templateId"));
   const selectedColor = location.state?.selectedColor || null;
-  const enhancedResume = location.state?.enhancedResume || null;
+  const enhancedResumeFromState = location.state?.enhancedResume ?? null;
+  const [enhancedResumeSession, setEnhancedResumeSession] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    return sessionStorage.getItem(FILL_CV_ENHANCED_SESSION);
+  });
+
+  useEffect(() => {
+    if (enhancedResumeFromState) {
+      sessionStorage.setItem(FILL_CV_ENHANCED_SESSION, enhancedResumeFromState);
+      setEnhancedResumeSession(enhancedResumeFromState);
+      return;
+    }
+    const pending = sessionStorage.getItem('pendingEnhancedResume');
+    if (pending) {
+      sessionStorage.setItem(FILL_CV_ENHANCED_SESSION, pending);
+      sessionStorage.removeItem('pendingEnhancedResume');
+      setEnhancedResumeSession(pending);
+      return;
+    }
+    const stored = sessionStorage.getItem(FILL_CV_ENHANCED_SESSION);
+    if (stored) setEnhancedResumeSession(stored);
+  }, [location.key, enhancedResumeFromState]);
+
+  const enhancedResume = enhancedResumeFromState || enhancedResumeSession || null;
+
   const cvRef = useRef(null); // ref to capture the cv section
   const image7DataUrlRef = useRef(null); // for blob→dataURL conversion when generating Template 7 PDF
   const [isDownloading, setIsDownloading] = useState(false);
@@ -71,6 +168,7 @@ const Fill_cv = () => {
   const [showEnhancedRef, setShowEnhancedRef] = useState(true);
   const [editableRefContent, setEditableRefContent] = useState('');
   const [copied, setCopied] = useState(false);
+  const [isApplyingToTemplate, setIsApplyingToTemplate] = useState(false);
 
   useEffect(() => {
     if (enhancedResume) setEditableRefContent(enhancedResume);
@@ -86,80 +184,137 @@ const Fill_cv = () => {
     }
   };
 
+  const [applyFeedback, setApplyFeedback] = useState('');
+  /** @returns {boolean} true if parsed and mapped to template fields */
   const applyEditedContentToTemplate = (text) => {
-    if (!text?.trim() || !templateId) return;
+    if (!text?.trim() || !templateId || isNaN(templateId)) {
+      setApplyFeedback('Select a template and add content in the sidebar to apply.');
+      setTimeout(() => setApplyFeedback(''), 4000);
+      return false;
+    }
     const data = parseEnhancedResumeToStructuredData(text);
-    if (!data) return;
+    if (!data) {
+      setApplyFeedback('Could not parse content. Ensure it has sections like Experience, Skills, or bullet points.');
+      setTimeout(() => setApplyFeedback(''), 4000);
+      return false;
+    }
     if (templateId === 10) {
+      if (data.name) setNametemp10(data.name);
       if (data.profession) setProfessiontemp10(data.profession);
+      if (data.contact?.address) setAddresstemp10(data.contact.address);
+      if (data.contact?.phone) setPhonetemp10(data.contact.phone);
+      if (data.contact?.email) setEmailtemp10(data.contact.email);
+      if (data.contact?.linkedin) setLinkedintemp10(data.contact.linkedin);
       if (data.summary) setAboutmeinfotemp10(data.summary);
       if (data.skills.length > 0) {
-        const padded = [...data.skills];
-        while (padded.length < 5) padded.push('');
-        setSkillstemp10(padded.slice(0, 5));
+        const skills = data.skills.slice(0, 4);
+        setSkillstemp10(skills);
+        setSkillLeveltemp10(skills.map((_, i) => 85 - i * 5));
       }
       if (data.experiences.length > 0) {
         const ex0 = data.experiences[0];
+        if (ex0.dateRange) setDate1temp10(ex0.dateRange);
         if (ex0.role) setPost1temp10(ex0.role);
         if (ex0.company) setCompany1temp10(ex0.company);
         if (ex0.responsibilities.length > 0) setWorkdone1temp10(ex0.responsibilities.slice(0, 5));
       }
       if (data.experiences.length > 1) {
         const ex1 = data.experiences[1];
+        if (ex1.dateRange) setDate2temp10(ex1.dateRange);
         if (ex1.role) setPost2temp10(ex1.role);
         if (ex1.company) setCompany2temp10(ex1.company);
         if (ex1.responsibilities.length > 0) setWorkdone2temp10(ex1.responsibilities.slice(0, 5));
       }
       if (data.education.degree) setFacultytemp10(data.education.degree);
       if (data.education.school) setUniversitytemp10(data.education.school);
-      if (data.education.date) setDatetemp10(data.education.date);
-      if (data.name) setNametemp10(data.name);
+      if (data.education.date) setEduDate1temp10(data.education.date);
+      if (data.education.gpa) setGpatemp10(data.education.gpa);
     } else if (templateId === 11) {
+      if (data.name) setNametemp11(data.name.toUpperCase?.() || data.name);
       if (data.profession) setProfessiontemp11(data.profession);
+      if (data.contact?.email) setEmailtemp11(data.contact.email);
+      if (data.contact?.phone) setPhonetemp11(data.contact.phone);
+      if (data.contact?.location) setLocationtemp11(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp11(data.contact.linkedin);
       if (data.summary) setSummaryinfotemp11(data.summary);
-      if (data.skills.length > 0) setSkillstemp11(data.skills.slice(0, 4));
+      if (data.skills.length > 0) setSkillstemp11(data.skills.slice(0, 8));
       if (data.experiences.length > 0) {
         const ex = data.experiences[0];
+        if (ex.dateRange) setDate1temp11(ex.dateRange);
         if (ex.role) setPost1temp11(ex.role);
         if (ex.company) setCompany1temp11(ex.company);
-        if (ex.responsibilities.length > 0) setWorkdone1temp11(ex.responsibilities.slice(0, 3));
+        if (ex.responsibilities.length > 0) setWorkdone1temp11(ex.responsibilities.slice(0, 4));
       }
       if (data.experiences.length > 1) {
         const ex = data.experiences[1];
+        if (ex.dateRange) setDate2temp11(ex.dateRange);
         if (ex.role) setPost2temp11(ex.role);
         if (ex.company) setCompany2temp11(ex.company);
-        if (ex.responsibilities.length > 0) setworkdone2temp11(ex.responsibilities.slice(0, 3));
+        if (ex.responsibilities.length > 0) setworkdone2temp11(ex.responsibilities.slice(0, 4));
+      }
+      if (data.experiences.length > 2) {
+        const ex = data.experiences[2];
+        if (ex.dateRange) setDate3temp11(ex.dateRange);
+        if (ex.role) setPost3temp11(ex.role);
+        if (ex.company) setCompany3temp11(ex.company);
+        if (ex.responsibilities.length > 0) setWorkdone3temp11(ex.responsibilities.slice(0, 4));
       }
       if (data.education.degree) setFacultytemp11(data.education.degree);
       if (data.education.school) setUniversitytemp11(data.education.school);
       if (data.education.date) setDatetemp11(data.education.date);
-      if (data.name) setNametemp11(data.name);
+    } else if (templateId === 12) {
+      if (data.name) setNametemp12(data.name);
+      if (data.profession) setProfessiontemp12(data.profession);
+      if (data.summary) setSummaryinfotemp12(data.summary);
+      if (data.contact?.location) setLocationtemp12(data.contact.location);
+      if (data.contact?.phone) setPhonetemp12(data.contact.phone);
+      if (data.contact?.email) setEmailtemp12(data.contact.email);
+      if (data.contact?.linkedin) setLinkedintemp12(data.contact.linkedin);
+      if (data.skills.length > 0) setSkillstemp12(data.skills.slice(0, 8));
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.dateRange) setDate1temp12(ex.dateRange);
+        if (ex.role) setPost1temp12(ex.role);
+        if (ex.company) setCompany1temp12(ex.company);
+        if (ex.responsibilities.length > 0) setWorkdone1temp12(ex.responsibilities.slice(0, 5));
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.dateRange) setDate2temp12(ex.dateRange);
+        if (ex.role) setPost2temp12(ex.role);
+        if (ex.company) setCompany2temp12(ex.company);
+        if (ex.responsibilities.length > 0) setWorkdone2temp12(ex.responsibilities.slice(0, 5));
+      }
+      if (data.education.degree) setFacultytemp12(data.education.degree);
+      if (data.education.school) setUniversitytemp12(data.education.school);
+      if (data.education.gpa) setAwardstemp12(data.education.gpa);
+      if (data.certifications?.length) setCertificationstemp12(data.certifications.slice(0, 4));
     } else if (templateId === 2) {
       if (data.summary) setProfileinfoTemp2(data.summary);
       if (data.profession) setTitletemp2(data.profession.toUpperCase());
       if (data.skills.length > 0) setSkillstemp2(data.skills.slice(0, 5));
       if (data.experiences.length > 0) {
         const ex = data.experiences[0];
-        const datePart = ex.dateRange ? ` • ${ex.dateRange}` : '';
+        const datePart = ex.dateRange ? ` - ${ex.dateRange}` : '';
         if (ex.role) setPost1temp2(ex.role.toUpperCase() + datePart);
         if (ex.company) setCompany1temp2(ex.company);
         if (ex.responsibilities.length > 0) setWorkdone1temp2(ex.responsibilities.slice(0, 3));
       }
       if (data.experiences.length > 1) {
         const ex = data.experiences[1];
-        const datePart = ex.dateRange ? ` • ${ex.dateRange}` : '';
+        const datePart = ex.dateRange ? ` - ${ex.dateRange}` : '';
         if (ex.role) setPost2temp2(ex.role.toUpperCase() + datePart);
         if (ex.company) setCompany2temp2(ex.company);
         if (ex.responsibilities.length > 0) setWorkdone2temp2(ex.responsibilities.slice(0, 3));
       }
       if (data.experiences.length > 2) {
         const ex = data.experiences[2];
-        const datePart = ex.dateRange ? ` • ${ex.dateRange}` : '';
+        const datePart = ex.dateRange ? ` - ${ex.dateRange}` : '';
         if (ex.role) setPost3temp2(ex.role.toUpperCase() + datePart);
         if (ex.company) setCompany3temp2(ex.company);
         if (ex.responsibilities.length > 0) setWorkdone3temp2(ex.responsibilities.slice(0, 3));
       }
-      if (data.education.degree) setEducationtemp2(data.education.date ? `${data.education.degree} • ${data.education.date}` : data.education.degree);
+      if (data.education.degree) setEducationtemp2(data.education.date ? `${data.education.degree} - ${data.education.date}` : data.education.degree);
       if (data.education.school) setUniversitytemp2(data.education.school);
       if (data.name) setNametemp2(data.name.replace(/^Name:\s*/i, "").toUpperCase());
     } else if (templateId === 3) {
@@ -220,6 +375,44 @@ const Fill_cv = () => {
       if (data.education.degree) setFacultytemp5(data.education.degree);
       if (data.education.school) setUniversitytemp5(data.education.school);
       if (data.education.date) setDatetemp5(data.education.date);
+    } else if (templateId === 6) {
+      if (data.name) setNametemp6((data.name.toUpperCase?.() || data.name).trim());
+      if (data.profession) setProfessiontemp6(data.profession);
+      if (data.contact?.phone) setPhonetemp6(data.contact.phone);
+      if (data.contact?.email) setEmailtemp6(data.contact.email);
+      if (data.contact?.location) setLocationtemp6(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp6(data.contact.linkedin);
+      if (data.summary) setProfileinfotemp6(data.summary);
+      if (data.skills.length > 0) {
+        const s = [...data.skills];
+        while (s.length < 6) s.push('');
+        setSkillstemp6(s.slice(0, 6));
+      }
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.role) setPost1temp6(ex.role);
+        if (ex.company) setComapny1temp6(ex.company);
+        if (ex.dateRange) setDate1temp6(ex.dateRange);
+        if (ex.location) setCompany1locationtemp6(ex.location);
+        const bullets = ex.responsibilities || [];
+        const w1 = [...bullets.slice(0, 3)];
+        while (w1.length < 3) w1.push('');
+        setWorkdone1temp6(w1);
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.role) setPost2temp6(ex.role);
+        if (ex.company) setCompany2temp6(ex.company);
+        if (ex.dateRange) setDate2temp6(ex.dateRange);
+        if (ex.location) setCompany2locationtemp6(ex.location);
+        const bullets = ex.responsibilities || [];
+        const w2 = [...bullets.slice(0, 3)];
+        while (w2.length < 3) w2.push('');
+        setWorkdone2temp6(w2);
+      }
+      if (data.education.degree) setFacultytemp6(data.education.degree);
+      if (data.education.school) setUniversitytemp6(data.education.school);
+      if (data.education.date) setDatetemp6(data.education.date);
     } else if (templateId === 7) {
       if (data.name) setNametemp7(data.name);
       if (data.profession) setProfessiontemp7(data.profession);
@@ -249,6 +442,30 @@ const Fill_cv = () => {
       if (data.education?.degree) setFacultytemp7(data.education.degree);
       if (data.education?.school) setUniversitytemp7(data.education.school);
       if (data.education?.date) setDatetemp7(data.education.date);
+    } else if (templateId === 8) {
+      if (data.name) setNametemp8(data.name.replace(/^Name:\s*/i, ''));
+      if (data.profession) setProfessiontemp8(data.profession);
+      if (data.summary) setAbouttemp8(data.summary);
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.role || ex.company) setPost1temp8(ex.company ? `${ex.role || ''} - ${ex.company}`.trim() : (ex.role || ex.company));
+        if (ex.dateRange) setDate1temp8(ex.dateRange);
+        if (ex.responsibilities.length > 0) setWorkdesc1temp8(ex.responsibilities.join('<br>'));
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.role || ex.company) setPost2temp8(ex.company ? `${ex.role || ''} - ${ex.company}`.trim() : (ex.role || ex.company));
+        if (ex.dateRange) setDate2temp8(ex.dateRange);
+        if (ex.responsibilities.length > 0) setWorkdesc2temp8(ex.responsibilities.join('<br>'));
+      }
+      if (data.education?.degree || data.education?.school || data.education?.date) {
+        setEdu1temp8((prev) => ({
+          ...prev,
+          degree: data.education.degree || prev.degree,
+          school: data.education.school || prev.school,
+          date: data.education.date || prev.date,
+        }));
+      }
     } else if (templateId === 1) {
       if (data.profession) setProfession(data.profession);
       if (data.summary) setBrief(data.summary);
@@ -276,19 +493,61 @@ const Fill_cv = () => {
     } else if (templateId === 13) {
       if (data.name) setNametemp13(data.name);
       if (data.profession) setProfessiontemp13(data.profession);
+      if (data.contact?.email) setEmailtemp13(data.contact.email);
+      if (data.contact?.linkedin) setLinkedintemp13(data.contact.linkedin);
+      if (data.contact?.location) setLocationtemp13(data.contact.location);
       if (data.summary) setSummarytemp13(data.summary);
-      if (data.skills.length > 0) { const s = [...data.skills]; while (s.length < 5) s.push(''); setSkillstemp13(s.slice(0, 5)); }
-      if (data.experiences.length > 0) { const ex = data.experiences[0]; if (ex.role) setPost1temp13(ex.role); if (ex.company) setCompany1temp13(ex.company); if (ex.responsibilities.length > 0) setWorkdone1temp13(ex.responsibilities.slice(0, 3)); }
+      if (data.skills.length > 0) setSkillstemp13(data.skills.slice(0, 8));
+      if (data.experiences.length > 0) { const ex = data.experiences[0]; if (ex.role) setPost1temp13(ex.role); if (ex.dateRange) setDate1temp13(ex.dateRange); if (ex.company) setCompany1temp13(ex.company); if (ex.location) setLocation1temp13(ex.location); if (ex.responsibilities.length > 0) setWorkdone1temp13(ex.responsibilities.slice(0, 5)); }
+      if (data.experiences.length > 1) { const ex = data.experiences[1]; if (ex.role) setPost2temp13(ex.role); if (ex.dateRange) setDate2temp13(ex.dateRange); if (ex.company) setCompany2temp13(ex.company); if (ex.location) setLocation2temp13(ex.location); if (ex.responsibilities.length > 0) setWorkdone2temp13(ex.responsibilities.slice(0, 4)); }
       if (data.education.degree) setFacultytemp13(data.education.degree);
+      if (data.education.date) setDateedutemp13(data.education.date);
       if (data.education.school) setUniversitytemp13(data.education.school);
-      if (data.education.date) setDatetemp13(data.education.date);
+      if (data.certifications?.length) setCertificationstemp13(data.certifications.slice(0, 3).map(c => typeof c === 'string' ? { title: c, issuer: '' } : { title: c.name || c.title || c, issuer: c.issuer || c.provider || '' }));
     } else if (templateId === 14) {
-      if (data.name) setNametemp14(data.name);
-      if (data.profession) setProfessiontemp14(data.profession);
-      if (data.skills.length > 0) setSkillstemp14(data.skills.slice(0, 4));
-      if (data.experiences.length > 0) { const ex = data.experiences[0]; if (ex.role) setPost1temp14(ex.role); if (ex.company) setCompany1temp14(ex.company); if (ex.responsibilities.length > 0) setWorkdone1temp14(ex.responsibilities.slice(0, 2)); }
+      if (data.name) {
+        const parts = data.name.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          setFirstnametemp14(parts[0].toUpperCase());
+          setLastnametemp14(parts.slice(1).join(' ').toUpperCase());
+        } else if (parts.length === 1) {
+          setFirstnametemp14(parts[0].toUpperCase());
+        }
+      }
+      if (data.contact?.location) setLocationtemp14(data.contact.location);
+      if (data.contact?.phone) setPhonetemp14(data.contact.phone);
+      if (data.contact?.email) setEmailtemp14(data.contact.email);
+      if (data.summary) setSummarytemp14(data.summary);
+      if (data.skills.length > 0) setSkillstemp14(data.skills.slice(0, 8));
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.role) setPost1temp14(ex.role);
+        if (ex.dateRange) setDate1temp14(ex.dateRange);
+        if (ex.company) setCompany1temp14(ex.company);
+        const w1 = [...(ex.responsibilities || []).slice(0, 5)];
+        while (w1.length < 5) w1.push('');
+        setWorkdone1temp14(w1);
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.role) setPost2temp14(ex.role);
+        if (ex.dateRange) setDate2temp14(ex.dateRange);
+        if (ex.company) setCompany2temp14(ex.company);
+        const w2 = [...(ex.responsibilities || []).slice(0, 5)];
+        while (w2.length < 5) w2.push('');
+        setWorkdone2temp14(w2);
+      }
       if (data.education.degree) setFacultytemp14(data.education.degree);
-      if (data.education.school) setUniversitytemp14(data.education.school);
+      if (data.education.school) setUniversitytemp14(data.education.school + (data.education.location ? ` - ${data.education.location}` : ''));
+      if (data.experiences.length > 2) {
+        const ex = data.experiences[2];
+        if (ex.role) setPost3temp14(ex.role);
+        if (ex.dateRange) setDate3temp14(ex.dateRange);
+        if (ex.company) setCompany3temp14(ex.company);
+        const w3 = [...(ex.responsibilities || []).slice(0, 5)];
+        while (w3.length < 3) w3.push('');
+        setWorkdone3temp14(w3);
+      }
     } else if (templateId === 9) {
       if (data.name) setNametemp9(data.name);
       if (data.summary) setProfiletemp9(data.summary);
@@ -314,17 +573,91 @@ const Fill_cv = () => {
         if (ex.responsibilities.length > 0) { setWorkdesc2temp9(ex.responsibilities[0]); setWorkdone2temp9(ex.responsibilities.slice(1, 3)); }
       }
     } else if (templateId === 15) {
-      if (data.name) setNametemp15(data.name);
-      if (data.summary) setResearchfocustemp15(data.summary);
-      if (data.education.degree) setEducationtemp15([data.education.degree, data.education.school || '', data.education.date || '']);
-      if (data.experiences.length > 0) setTeachingtemp15([data.experiences[0].role || '', data.experiences[0].company || '', data.experiences[0].date || '']);
+      if (data.name) setNametemp15(data.name.toUpperCase());
+      if (data.contact?.phone) setPhonetemp15(data.contact.phone);
+      if (data.contact?.email) setEmailtemp15(data.contact.email);
+      if (data.contact?.location) setLocationtemp15(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp15(data.contact.linkedin);
+      if (data.summary) setSummarytemp15(data.summary);
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.role) setPost1temp15(ex.role);
+        if (ex.dateRange) setDate1temp15(ex.dateRange);
+        if (ex.company) setCompany1temp15(ex.company);
+        if (ex.location) setLocation1temp15(ex.location);
+        if (ex.responsibilities.length > 0) setWorkdone1temp15(ex.responsibilities.slice(0, 5));
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.role) setPost2temp15(ex.role);
+        if (ex.dateRange) setDate2temp15(ex.dateRange);
+        if (ex.company) setCompany2temp15(ex.company);
+        if (ex.location) setLocation2temp15(ex.location);
+        if (ex.responsibilities.length > 0) setWorkdone2temp15(ex.responsibilities.slice(0, 5));
+      }
+      if (data.education.school) setUniversitytemp15(data.education.school);
+      if (data.education.location) setLocationedutemp15(data.education.location);
+      if (data.education.date) setDateedutemp15(data.education.date);
+      if (data.education.degree) setDegreetemp15(data.education.degree);
+      if (data.skills.length > 0) setTechnicalSkillstemp15(data.skills.slice(0, 8).join(', '));
+    } else if (templateId === 16) {
+      if (data.name) setNametemp16(data.name.toUpperCase());
+      if (data.summary) setProfiletemp16(data.summary);
+      if (data.skills.length > 0) {
+        const s = [...data.skills];
+        while (s.length < 9) s.push('');
+        setSkillstemp16(s.slice(0, 9));
+      }
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.company) setCompany1temp16(ex.company);
+        if (ex.role) setPost1temp16(ex.role);
+        if (ex.dateRange) setDate1temp16(ex.dateRange);
+        if (ex.responsibilities.length > 0) {
+          setWorkdesc1temp16(ex.responsibilities[0]);
+          setWorkdone1temp16(ex.responsibilities.slice(1, 4));
+        }
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.company) setCompany2temp16(ex.company);
+        if (ex.role) setPost2temp16(ex.role);
+        if (ex.dateRange) setDate2temp16(ex.dateRange);
+        if (ex.responsibilities.length > 0) {
+          setWorkdesc2temp16(ex.responsibilities[0]);
+          setWorkdone2temp16(ex.responsibilities.slice(1, 3));
+        }
+      }
+      if (data.education.school) setUniversitytemp16(data.education.school);
+      if (data.education.degree) setFacultytemp16(data.education.degree);
+      if (data.education.date) setYear16temp16(data.education.date);
+    } else {
+      setApplyFeedback('Could not apply: unsupported template.');
+      setTimeout(() => setApplyFeedback(''), 4000);
+      return false;
+    }
+    setApplyFeedback('Content applied to template!');
+    setTimeout(() => setApplyFeedback(''), 3000);
+    return true;
+  };
+
+  const handleCopyToTemplate = async () => {
+    if (isApplyingToTemplate) return;
+    setIsApplyingToTemplate(true);
+    setApplyFeedback('');
+    const delayMs = 2500;
+    await new Promise((r) => setTimeout(r, delayMs));
+    try {
+      applyEditedContentToTemplate(editableRefContent);
+    } finally {
+      setIsApplyingToTemplate(false);
     }
   };
 
   useEffect(() => {
     if (!templateId) return;
     if (PREMIUM_TEMPLATE_IDS.includes(templateId) && !isPremium) {
-      navigate("/payment", { state: { message: "Premium content cannot be used unless you complete payment. Please pay first to use this template." } });
+      navigate("/payment", { state: { product: "premiumTemplates", message: "Pay NRS 250 to use this premium template." } });
     }
   }, [templateId, isPremium, navigate]);
 
@@ -419,13 +752,16 @@ const Fill_cv = () => {
 
     // Enhanced download function - PDF uses programmatic jsPDF (editable text), PNG uses html2canvas
     const handleDownload = async (format = 'pdf', useEditableFilename = false) => {
-      if (!cvRef.current && (format === 'png' || (format === 'pdf' && templateId === 9))) {
+      // PDFs that mirror the on-screen layout (html2canvas) — includes Template 1 so export matches the designed CV
+      const pdfUsesHtml2Canvas = [1, 9, 10, 11, 12, 13, 14, 15, 16].includes(templateId);
+      const useVisualPdf = format === 'pdf' && pdfUsesHtml2Canvas;
+
+      if (!cvRef.current && (format === 'png' || useVisualPdf)) {
         alert('CV content not found. Please try again.');
         return;
       }
 
-      const useVisualPdf = format === 'pdf' && templateId === 9;
-      // PDF: Template 9 always uses html2canvas (pixel-perfect match); other templates use programmatic jsPDF
+      // PDF: Templates 1, 9–16 use html2canvas (pixel-perfect); others use programmatic jsPDF
       if (format === 'pdf' && !useVisualPdf) {
         setIsDownloading(true);
         setDownloadProgress(30);
@@ -461,23 +797,47 @@ const Fill_cv = () => {
         return;
       }
 
-      // PNG or Template 9 visual PDF: use html2canvas for pixel-perfect capture
+      // PNG or visual PDF (templates 1, 9–16): html2canvas for pixel-perfect capture
       setIsDownloading(true);
       setDownloadProgress(10);
 
       let contentEditableBackups = new Map();
       let template7RightBackup = null;
+      let template1Backups = [];
+      let template10Backups = [];
+      let template11Backups = [];
+      let template12Backups = [];
+      let template13Backups = [];
+      let template14AncestorBackups = [];
       try {
         // Find the actual template content (might be nested)
         let element = cvRef.current;
         
         // If the ref is on a wrapper, find the actual template div
-        const templateDiv = element.querySelector('div[style*="height"], div[class*="max-w"]');
+        const template1El = templateId === 1 ? element.querySelector('[data-template1]') : null;
+        const template10El = templateId === 10 ? element.querySelector('[data-template10]') : null;
+        const template11El = templateId === 11 ? element.querySelector('[data-template11]') : null;
+        const template12El = templateId === 12 ? element.querySelector('[data-template12]') : null;
+        const template13El = templateId === 13 ? element.querySelector('[data-template13]') : null;
+        const template14El = templateId === 14 ? element.querySelector('[data-template14]') : null;
+        const template15El = templateId === 15 ? element.querySelector('[data-template15]') : null;
+        const template16El = templateId === 16 ? element.querySelector('[data-template16]') : null;
+        const templateDiv = template1El || template10El || template11El || template12El || template13El || template14El || template15El || template16El || element.querySelector('div[style*="height"], div[class*="max-w"]');
         if (templateDiv && templateDiv !== element) {
           // Check if templateDiv is a direct child or nested
           const isDirectChild = Array.from(element.children).includes(templateDiv);
           if (isDirectChild || templateDiv.offsetHeight > 500) {
             element = templateDiv;
+          }
+        }
+        // Template 10, 11, 12, 13, 14 & 16: scroll into view so html2canvas captures correctly
+        if ((templateId === 1 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) && element) {
+          element.scrollIntoView({ behavior: 'instant', block: 'start' });
+          await new Promise(resolve => setTimeout(resolve, 150));
+          // Template 14: also scroll to end so education section at bottom is fully laid out
+          if (templateId === 14) {
+            element.scrollIntoView({ behavior: 'instant', block: 'end' });
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
 
@@ -488,6 +848,7 @@ const Fill_cv = () => {
           overflow: element.style.overflow,
           height: element.style.height,
           maxHeight: element.style.maxHeight,
+          minHeight: element.style.minHeight,
           position: element.style.position,
           transform: element.style.transform,
           opacity: element.style.opacity,
@@ -501,6 +862,7 @@ const Fill_cv = () => {
         element.style.overflow = 'visible';
         element.style.height = 'auto';
         element.style.maxHeight = 'none';
+        element.style.minHeight = (templateId === 1 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) ? '0' : element.style.minHeight; // Template 1 & 10–16: avoid fixed min-height clipping / blank PDF pages
         element.style.border = 'none';
         element.style.boxShadow = 'none';
         element.style.position = 'relative';
@@ -597,6 +959,14 @@ const Fill_cv = () => {
             maxWidth: el.style.maxWidth,
             flex: el.style.flex,
           });
+          // Template 16 profile & work desc: full width so PDF matches editor
+          if (templateId === 16 && (el.hasAttribute('data-template16-profile') || el.hasAttribute('data-template16-workdesc'))) {
+            el.style.width = '100%';
+            el.style.minWidth = '100%';
+            el.style.maxWidth = '100%';
+            el.style.flex = 'none';
+            return;
+          }
           const parent = el.parentElement;
           let w = 380;
           if (parent) {
@@ -650,24 +1020,227 @@ const Fill_cv = () => {
           }
         }
 
+        // Template 11: pre-capture layout fix so PDF matches editor
+        if (templateId === 11) {
+          const t11 = element.querySelector('[data-template11]') || element;
+          template11Backups.push({ el: t11, props: ['width', 'minWidth'], vals: [t11.style.width, t11.style.minWidth] });
+          t11.style.width = '768px';
+          t11.style.minWidth = '768px';
+          const leftCol = t11.querySelector('[data-template11-left]');
+          if (leftCol) {
+            template11Backups.push({ el: leftCol, props: ['width', 'minWidth', 'flex'], vals: [leftCol.style.width, leftCol.style.minWidth, leftCol.style.flex] });
+            leftCol.style.width = '256px';
+            leftCol.style.minWidth = '256px';
+            leftCol.style.flex = 'none';
+          }
+          const rightCol = leftCol?.nextElementSibling;
+          if (rightCol) {
+            template11Backups.push({ el: rightCol, props: ['flex', 'minWidth'], vals: [rightCol.style.flex, rightCol.style.minWidth] });
+            rightCol.style.flex = '1';
+            rightCol.style.minWidth = '400px';
+          }
+          void element.offsetHeight;
+          await new Promise(resolve => setTimeout(resolve, 80));
+        }
+
+        // Template 12: pre-capture layout fix so PDF matches editor (two-column: left 2/3, right 1/3)
+        if (templateId === 12) {
+          const t12 = element.querySelector('[data-template12]') || element;
+          template12Backups.push({ el: t12, props: ['width', 'minWidth'], vals: [t12.style.width, t12.style.minWidth] });
+          t12.style.width = '768px';
+          t12.style.minWidth = '768px';
+          t12.style.overflow = 'visible';
+          const leftCol = t12.querySelector('[data-template12-left]');
+          const rightCol = t12.querySelector('[data-template12-right]');
+          if (leftCol) {
+            template12Backups.push({ el: leftCol, props: ['flex', 'minWidth'], vals: [leftCol.style.flex, leftCol.style.minWidth] });
+            leftCol.style.flex = '1';
+            leftCol.style.minWidth = '400px';
+            leftCol.style.overflow = 'visible';
+          }
+          if (rightCol) {
+            template12Backups.push({ el: rightCol, props: ['flex', 'minWidth'], vals: [rightCol.style.flex, rightCol.style.minWidth] });
+            rightCol.style.flex = 'none';
+            rightCol.style.minWidth = '220px';
+          }
+          // Work experience: ensure section expands and shows full content
+          const workSection = t12.querySelector('[data-template12-work]');
+          if (workSection) workSection.style.overflow = 'visible';
+          void element.offsetHeight;
+          await new Promise(resolve => setTimeout(resolve, 80));
+        }
+
+        // Template 13: pre-capture layout fix so PDF matches editor (two-column: left ~65%, right ~35%)
+        if (templateId === 13) {
+          const t13 = element.querySelector('[data-template13]') || element;
+          template13Backups.push({ el: t13, props: ['width', 'minWidth'], vals: [t13.style.width, t13.style.minWidth] });
+          t13.style.width = '768px';
+          t13.style.minWidth = '768px';
+          t13.style.overflow = 'visible';
+          const cols = t13.querySelector('.flex');
+          if (cols) {
+            const leftCol = cols.children[0];
+            const rightCol = cols.children[1];
+            if (leftCol) {
+              template13Backups.push({ el: leftCol, props: ['flex', 'minWidth'], vals: [leftCol.style.flex, leftCol.style.minWidth] });
+              leftCol.style.flex = '1';
+              leftCol.style.minWidth = '400px';
+              leftCol.style.overflow = 'visible';
+            }
+            if (rightCol) {
+              template13Backups.push({ el: rightCol, props: ['width', 'minWidth'], vals: [rightCol.style.width, rightCol.style.minWidth] });
+              rightCol.style.width = '268px';
+              rightCol.style.minWidth = '200px';
+              rightCol.style.flex = 'none';
+            }
+          }
+          void element.offsetHeight;
+          await new Promise(resolve => setTimeout(resolve, 80));
+        }
+
+        // Template 14: pre-capture layout fix - ensure full content (Education, Skills) is captured
+        if (templateId === 14) {
+          const t14 = element.querySelector('[data-template14]') || element;
+          t14.style.width = '768px';
+          t14.style.minWidth = '768px';
+          t14.style.height = 'auto';
+          t14.style.minHeight = '0';
+          t14.style.maxHeight = 'none';
+          t14.style.overflow = 'visible';
+          // Ensure all ancestors allow full content to be visible (no clipping)
+          let parent = t14.parentElement;
+          while (parent && parent !== document.body) {
+            template14AncestorBackups.push({
+              el: parent,
+              overflow: parent.style.overflow,
+              overflowY: parent.style.overflowY,
+              maxHeight: parent.style.maxHeight
+            });
+            const cs = getComputedStyle(parent);
+            if (cs.overflow === 'hidden' || cs.overflow === 'auto' || cs.overflowY === 'hidden' || cs.overflowY === 'auto') {
+              parent.style.overflow = 'visible';
+              parent.style.overflowY = 'visible';
+            }
+            if (cs.maxHeight && cs.maxHeight !== 'none') {
+              parent.style.maxHeight = 'none';
+            }
+            parent = parent.parentElement;
+          }
+          void element.offsetHeight;
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
+        // Template 15: pre-capture layout fix (single-column, fixed width)
+        if (templateId === 15) {
+          const t15 = element.querySelector('[data-template15]') || element;
+          t15.style.width = '672px';
+          t15.style.minWidth = '672px';
+          t15.style.height = 'auto';
+          t15.style.minHeight = '0';
+          t15.style.maxHeight = 'none';
+          t15.style.overflow = 'visible';
+          void element.offsetHeight;
+          await new Promise(resolve => setTimeout(resolve, 80));
+        }
+
+        // Template 1: print width + A4 min height so PDF has no white band under short content
+        if (templateId === 1) {
+          const t1 = element.matches?.('[data-template1]') ? element : element.querySelector('[data-template1]');
+          if (t1) {
+            const targetW = 900;
+            template1Backups.push({
+              el: t1,
+              props: ['width', 'minWidth', 'maxWidth', 'marginLeft', 'marginRight', 'minHeight'],
+              vals: [t1.style.width, t1.style.minWidth, t1.style.maxWidth, t1.style.marginLeft, t1.style.marginRight, t1.style.minHeight],
+            });
+            t1.style.width = `${targetW}px`;
+            t1.style.minWidth = `${targetW}px`;
+            t1.style.maxWidth = 'none';
+            t1.style.marginLeft = '0';
+            t1.style.marginRight = '0';
+            t1.style.boxSizing = 'border-box';
+            void t1.offsetHeight;
+            const a4MinPx = Math.ceil(t1.offsetWidth * (297 / 210));
+            const naturalH = t1.scrollHeight;
+            const targetMinH = Math.max(naturalH + 32, a4MinPx);
+            t1.style.minHeight = `${targetMinH}px`;
+            const innerFlex = t1.firstElementChild;
+            if (innerFlex?.classList?.contains('flex')) {
+              template1Backups.push({
+                el: innerFlex,
+                props: ['width', 'minWidth', 'minHeight', 'alignItems'],
+                vals: [innerFlex.style.width, innerFlex.style.minWidth, innerFlex.style.minHeight, innerFlex.style.alignItems],
+              });
+              innerFlex.style.width = '100%';
+              innerFlex.style.minWidth = '100%';
+              innerFlex.style.minHeight = `${targetMinH}px`;
+              innerFlex.style.alignItems = 'stretch';
+            }
+            void t1.offsetHeight;
+            await new Promise((r) => setTimeout(r, 80));
+          }
+        }
+
+        // Template 10: pre-capture layout fix so PDF matches editor
+        if (templateId === 10) {
+          const t10 = element.querySelector('[data-template10]') || element;
+          const targetW = 768;
+          template10Backups.push({ el: t10, props: ['width', 'minWidth', 'maxWidth'], vals: [t10.style.width, t10.style.minWidth, t10.style.maxWidth] });
+          t10.style.width = targetW + 'px';
+          t10.style.minWidth = targetW + 'px';
+          t10.style.maxWidth = targetW + 'px';
+          t10.querySelectorAll('[data-template10-skillbar]').forEach((track) => {
+            const fill = track.firstElementChild;
+            const fillWidthOrig = fill?.style?.width || '';
+            template10Backups.push({ el: track, props: ['minWidth', 'width', 'flex'], vals: [track.style.minWidth, track.style.width, track.style.flex] });
+            if (fill) template10Backups.push({ el: fill, props: ['width'], vals: [fillWidthOrig] });
+            track.style.minWidth = '180px';
+            track.style.width = '180px';
+            track.style.flex = '1';
+            if (fill) {
+              const pct = parseFloat(String(fillWidthOrig || '0')) || 0;
+              fill.style.width = Math.round(180 * pct / 100) + 'px';
+            }
+          });
+          void element.offsetHeight;
+          await new Promise(resolve => setTimeout(resolve, 80));
+        }
+
         // Get the actual content dimensions (including overflow)
-        const contentWidth = Math.max(
+        let contentWidth = Math.max(
           element.scrollWidth,
           element.offsetWidth,
           element.clientWidth
         );
-        const contentHeight = Math.max(
+        let contentHeight = Math.max(
           element.scrollHeight,
           element.offsetHeight,
           element.clientHeight
         );
+        // Template 14: add buffer to ensure Education & Skills at bottom are fully captured
+        if (templateId === 14) {
+          contentHeight = Math.max(contentHeight, element.scrollHeight) + 20;
+        }
+        // Template 15: add buffer for full content
+        if (templateId === 15) {
+          contentHeight = Math.max(contentHeight, element.scrollHeight) + 20;
+        }
+        if (templateId === 1) {
+          contentHeight = Math.max(contentHeight, element.scrollHeight) + 32;
+        }
 
-        // High-quality canvas capture with improved settings - captures FULL content
+        // Template 1: use exact layout width (not scrollWidth) so html2canvas has no white side gutters
+        if (templateId === 1) {
+          const rw = Math.round(element.getBoundingClientRect().width);
+          if (rw > 0) contentWidth = rw;
+        }
+
+        // High-quality canvas capture - match edit menu appearance
         const canvas = await html2canvas(element, {
-          scale: 4, // High resolution for print quality
+          scale: 3, // Balance quality vs memory (4 can cause issues on long templates)
           useCORS: true,
           allowTaint: false,
-          backgroundColor: '#ffffff',
+          backgroundColor: templateId === 1 ? '#000000' : '#ffffff',
           logging: false,
           width: contentWidth,
           height: contentHeight,
@@ -675,9 +1248,20 @@ const Fill_cv = () => {
           windowHeight: contentHeight,
           scrollX: 0,
           scrollY: 0,
-          removeContainer: false, // Keep container to capture everything
-          imageTimeout: 20000, // 20 second timeout for images
+          removeContainer: false,
+          imageTimeout: 20000,
+          foreignObjectRendering: false, // false = more consistent cross-browser (true can help positioning but varies)
           onclone: (clonedDoc, clonedElement) => {
+            // Inject styles so clone matches edit menu (html2canvas may not inherit all CSS)
+            const styleEl = clonedDoc.createElement('style');
+            styleEl.textContent = `
+              [data-template14] { font-family: Helvetica, Arial, sans-serif !important; }
+              [data-template14-section] { font-size: 1.1rem !important; font-weight: 400 !important; color: #000 !important; }
+              [data-template14-contact] { background: #000 !important; color: #fff !important; }
+              [data-template14-education] input, [data-template14-education] div { font-weight: bold !important; }
+            `;
+            clonedDoc.head.appendChild(styleEl);
+
             // html2canvas cannot capture input/textarea values - replace with divs for proper text rendering
             const replaceWithDiv = (el, text) => {
               const div = clonedDoc.createElement('div');
@@ -707,18 +1291,338 @@ const Fill_cv = () => {
                 input.parentNode.replaceChild(empty, input);
                 return;
               }
-              // Hide number inputs (e.g. skill levels) - progress bar shows the value visually
+              // Number inputs: Template 10 skill levels show value; others hide (progress bar shows it)
               if (input.type === 'number') {
-                const empty = clonedDoc.createElement('div');
-                empty.style.cssText = 'width:0;min-width:0;overflow:hidden;flex-shrink:0;';
-                input.parentNode.replaceChild(empty, input);
+                const inTemplate10Skills = templateId === 10 && input.closest('[data-template10]');
+                if (inTemplate10Skills) {
+                  const span = clonedDoc.createElement('span');
+                  span.textContent = input.value || '0';
+                  span.style.cssText = 'font-size:12px;color:#6b7280;width:2rem;flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums;';
+                  input.parentNode.replaceChild(span, input);
+                } else {
+                  const empty = clonedDoc.createElement('div');
+                  empty.style.cssText = 'width:0;min-width:0;overflow:hidden;flex-shrink:0;';
+                  input.parentNode.replaceChild(empty, input);
+                }
                 return;
               }
-              replaceWithDiv(input, input.value);
+              // Template 10 skill names: fixed width so bars stay adjacent (replaceWithDiv uses 100% which pushes bars right)
+              if (templateId === 10 && input.hasAttribute('data-template10-skillname')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:176px;min-width:176px;flex-shrink:0;overflow:visible;word-wrap:break-word;background:transparent;border:none;outline:none;font-size:0.875rem;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 11 contact/left column: preserve right-aligned layout, fixed width
+              if (templateId === 11 && (input.closest('[data-template11-contact]') || input.closest('[data-template11-left]'))) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;text-align:right;width:100%;max-width:100%;min-width:0;margin-left:auto;background:transparent;border:none;outline:none;font-size:0.875rem;word-break:break-word;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 12 job title: flex-1 min-w-0 collapses to zero in html2canvas, causing vertical character stacking
+              if (templateId === 12 && input.hasAttribute('data-template12-jobtitle')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex:1;min-width:180px;max-width:100%;background:transparent;border:none;outline:none;font-weight:bold;color:#1f2937;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 12 date: preserve right-aligned layout
+              if (templateId === 12 && input.hasAttribute('data-template12-date')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex-shrink:0;width:9rem;min-width:9rem;text-align:right;background:transparent;border:none;outline:none;font-size:0.875rem;font-weight:bold;color:#1f2937;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 13 job title: flex-1 min-w-0 collapses in html2canvas
+              if (templateId === 13 && input.hasAttribute('data-template13-jobtitle')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex:1;min-width:180px;max-width:100%;background:transparent;border:none;outline:none;font-weight:bold;color:#1f2937;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 13 date: keep on one line (flex), prevent wrapping
+              if (templateId === 13 && input.hasAttribute('data-template13-date')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex-shrink:0;width:140px;min-width:140px;text-align:right;background:transparent;border:none;outline:none;font-size:0.875rem;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 13 location: keep on one line
+              if (templateId === 13 && input.hasAttribute('data-template13-loc')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex-shrink:0;width:100px;min-width:100px;text-align:right;background:transparent;border:none;outline:none;font-size:0.875rem;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 13 education degree/university: flex-1 min-w-0 can collapse
+              if (templateId === 13 && (input.hasAttribute('data-template13-edu-degree') || input.hasAttribute('data-template13-edu-university'))) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex:1;min-width:120px;max-width:100%;background:transparent;border:none;outline:none;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                if (input.hasAttribute('data-template13-edu-degree')) div.style.fontWeight = 'bold';
+                else div.style.fontSize = '0.875rem';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 13 education date/loc: preserve right-aligned layout
+              if (templateId === 13 && (input.hasAttribute('data-template13-edu-date') || input.hasAttribute('data-template13-edu-loc'))) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex-shrink:0;width:7rem;min-width:7rem;text-align:right;background:transparent;border:none;outline:none;font-size:0.875rem;color:#4b5563;white-space:nowrap;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 13 skill: uniform grid cell, allow wrap to prevent overflow/overlap
+              if (templateId === 13 && input.hasAttribute('data-template13-skill')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:100%;min-width:0;max-width:100%;padding:0.25rem 0.5rem;border-radius:0.25rem;font-size:0.875rem;background:rgba(255,255,255,0.1);color:white;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;overflow:hidden;box-sizing:border-box;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 13 language name/level: prevent word break (Englis-h, Advance-d)
+              if (templateId === 13 && (input.hasAttribute('data-template13-lang') || input.hasAttribute('data-template13-lang-level'))) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;min-width:90px;background:transparent;border:none;outline:none;font-size:0.875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                if (input.hasAttribute('data-template13-lang')) {
+                  div.style.fontWeight = 'bold';
+                  div.setAttribute('data-template13-lang', '');
+                } else {
+                  div.style.minWidth = '70px';
+                  div.setAttribute('data-template13-lang-level', '');
+                }
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 job title: flex-1 min-w-0 can collapse in html2canvas
+              if (templateId === 14 && input.hasAttribute('data-template14-jobtitle')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex:1;min-width:120px;max-width:100%;background:transparent;border:none;outline:none;font-weight:bold;color:#000;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 15 job title: flex-1 min-w-0 can collapse in html2canvas
+              if (templateId === 15 && input.hasAttribute('data-template15-jobtitle')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex:1;min-width:120px;max-width:100%;background:transparent;border:none;outline:none;font-weight:bold;color:#1f2937;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 15 date: keep on one line, right-aligned
+              if (templateId === 15 && input.hasAttribute('data-template15-date')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex-shrink:0;width:120px;min-width:120px;text-align:right;background:transparent;border:none;outline:none;font-size:0.875rem;color:#4b5563;white-space:nowrap;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 15 education: university (flex-1 can collapse)
+              if (templateId === 15 && input.hasAttribute('data-template15-edu-university')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex:1;min-width:100px;max-width:100%;background:transparent;border:none;outline:none;font-weight:bold;color:#1f2937;font-size:0.875rem;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 15 education: date
+              if (templateId === 15 && input.hasAttribute('data-template15-edu-date')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex-shrink:0;width:80px;min-width:80px;text-align:right;background:transparent;border:none;outline:none;font-size:0.875rem;color:#4b5563;white-space:nowrap;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 15 education: location, degree, major
+              if (templateId === 15 && (input.hasAttribute('data-template15-edu-location') || input.hasAttribute('data-template15-edu-degree') || input.hasAttribute('data-template15-edu-major'))) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:100%;background:transparent;border:none;outline:none;font-size:0.875rem;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                if (input.hasAttribute('data-template15-edu-location')) {
+                  div.style.fontStyle = 'italic';
+                  div.style.color = '#4b5563';
+                  div.style.marginBottom = '0.25rem';
+                } else if (input.hasAttribute('data-template15-edu-degree')) {
+                  div.style.color = '#1f2937';
+                } else if (input.hasAttribute('data-template15-edu-major')) {
+                  div.style.color = '#374151';
+                }
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 date: keep on one line, right-aligned
+              if (templateId === 14 && input.hasAttribute('data-template14-date')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;flex-shrink:0;width:140px;min-width:140px;text-align:right;background:transparent;border:none;outline:none;font-size:0.875rem;color:#4b5563;white-space:nowrap;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 contact bar: inline-block for Location | Phone | Email
+              if (templateId === 14 && input.closest('[data-template14-contact]')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:inline-block;background:transparent;border:none;outline:none;color:white;min-width:60px;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 firstname/lastname: preserve layout
+              if (templateId === 14 && (input.hasAttribute('data-template14-firstname') || input.hasAttribute('data-template14-lastname'))) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:inline-block;background:transparent;border:none;outline:none;font-weight:bold;font-size:1.5rem;text-transform:uppercase;';
+                if (input.hasAttribute('data-template14-lastname')) div.style.color = '#C00000';
+                else div.style.color = '#000';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 company: bold, matches edit menu
+              if (templateId === 14 && input.hasAttribute('data-template14-company')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:100%;font-weight:bold;font-size:0.875rem;color:#000;background:transparent;border:none;outline:none;margin-bottom:0.5rem;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 15 work bullet: use • prefix for reliable PDF rendering (list-style can misrender in html2canvas)
+              if (templateId === 15 && input.hasAttribute('data-template15-workbullet')) {
+                const div = clonedDoc.createElement('div');
+                const text = (input.value || '').trim();
+                div.textContent = text ? '\u2022 ' + text : '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:100%;font-size:0.875rem;color:#1f2937;background:transparent;border:none;outline:none;word-wrap:break-word;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 work bullet: match edit menu (text-sm, gray-800)
+              if (templateId === 14 && input.hasAttribute('data-template14-workbullet')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:100%;font-size:0.875rem;color:#1f2937;background:transparent;border:none;outline:none;word-wrap:break-word;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 skill: preserve grid layout
+              if (templateId === 14 && input.hasAttribute('data-template14-skill')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:100%;min-width:0;background:transparent;border:none;outline:none;font-size:0.875rem;word-wrap:break-word;';
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 14 education: ensure degree and university render in PDF
+              if (templateId === 14 && (input.hasAttribute('data-template14-edu-degree') || input.hasAttribute('data-template14-edu-university'))) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = 'display:block;width:100%;min-width:0;background:transparent;border:none;outline:none;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;';
+                if (input.hasAttribute('data-template14-edu-degree')) {
+                  div.style.fontWeight = 'bold';
+                  div.style.marginBottom = '0.25rem';
+                } else {
+                  div.style.fontSize = '0.875rem';
+                }
+                input.parentNode.replaceChild(div, input);
+                return;
+              }
+              // Template 10, 15 & 16 contact: use inline-block so items stay inline in PDF
+              const inContactBar = (templateId === 10 && input.closest('[data-template10-contact]')) || (templateId === 15 && input.closest('[data-template15-contact]')) || (templateId === 16 && input.closest('[data-template16-contact]'));
+              if (inContactBar) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = input.value || '';
+                div.className = input.className;
+                div.style.cssText = input.style?.cssText || '';
+                div.style.display = 'inline-block';
+                div.style.width = 'auto';
+                div.style.minWidth = '60px';
+                div.style.background = 'transparent';
+                div.style.border = 'none';
+                div.style.outline = 'none';
+                input.parentNode.replaceChild(div, input);
+              } else {
+                replaceWithDiv(input, input.value);
+              }
             });
             clonedElement.querySelectorAll('textarea').forEach((textarea) => {
-              replaceWithDiv(textarea, textarea.value);
+              let tv = textarea.value;
+              // Keep hyphenated terms on one line in PDF (e.g. anti-virus) — non-breaking hyphen between alphanumerics
+              if (templateId === 1 && tv) {
+                tv = tv.replace(/([a-zA-Z0-9])-([a-zA-Z0-9])/g, '$1\u2011$2');
+              }
+              replaceWithDiv(textarea, tv);
             });
+
+            // Template 15: hide empty bullet points so PDF matches edit menu
+            if (templateId === 15) {
+              const t15Clone = clonedElement.hasAttribute('data-template15') ? clonedElement : clonedElement.querySelector('[data-template15]');
+              if (t15Clone) {
+                t15Clone.querySelectorAll('[data-template15-workbullets] li').forEach((li) => {
+                  const child = li.querySelector('input') || li.firstElementChild;
+                  const text = (child?.value ?? child?.textContent ?? '').trim();
+                  if (!text) li.style.display = 'none';
+                });
+              }
+            }
+
+            // Template 14: hide empty bullet points so PDF matches edit menu (no blank bullets)
+            if (templateId === 14) {
+              const t14Clone = clonedElement.hasAttribute('data-template14') ? clonedElement : clonedElement.querySelector('[data-template14]');
+              if (t14Clone) {
+                t14Clone.querySelectorAll('ul.list-disc li').forEach((li) => {
+                  const child = li.querySelector('input') || li.firstElementChild;
+                  const text = (child?.value ?? child?.textContent ?? '').trim();
+                  if (!text) li.style.display = 'none';
+                });
+                // Hide empty second education (degree2 + university2) - inputs already replaced with divs
+                const eduSection = t14Clone.querySelector('[data-template14-education]');
+                if (eduSection) {
+                  const kids = Array.from(eduSection.children).filter((c) => c.tagName !== 'H3' && !c.hasAttribute?.('data-template14-divider'));
+                  if (kids.length >= 4) {
+                    const deg2El = kids[2];
+                    const uni2El = kids[3];
+                    const deg2Text = (deg2El?.textContent ?? '').trim();
+                    const uni2Text = (uni2El?.textContent ?? '').trim();
+                    if (!deg2Text && !uni2Text) {
+                      deg2El.style.display = 'none';
+                      uni2El.style.display = 'none';
+                    }
+                  }
+                }
+              }
+            }
 
             // Fix contenteditable (RichTextBlock) - html2canvas collapses flex-1 min-w-0 to zero width
             clonedElement.querySelectorAll('[contenteditable="true"]').forEach((el) => {
@@ -731,6 +1635,11 @@ const Fill_cv = () => {
                 el.style.maxWidth = profileW + 'px';
                 el.style.marginLeft = 'auto';
                 el.style.marginRight = 'auto';
+              } else if (templateId === 16 && (el.hasAttribute('data-template16-profile') || el.hasAttribute('data-template16-workdesc'))) {
+                el.style.width = '100%';
+                el.style.minWidth = '100%';
+                el.style.maxWidth = '100%';
+                el.style.boxSizing = 'border-box';
               } else {
                 const parent = el.parentElement;
                 let w = 350;
@@ -782,6 +1691,389 @@ const Fill_cv = () => {
                   leftCol.style.width = '256px';
                   leftCol.style.minWidth = '256px';
                 }
+              }
+            }
+
+            // Template 1: full print width + avoid breaking words at hyphens (e.g. anti-virus)
+            if (templateId === 1) {
+              const t1Style = clonedDoc.createElement('style');
+              t1Style.textContent = `
+                [data-template1] textarea,
+                [data-template1] ul li > div {
+                  word-break: normal !important;
+                  overflow-wrap: break-word !important;
+                  hyphens: none !important;
+                  -webkit-hyphens: none !important;
+                }
+              `;
+              clonedDoc.head.appendChild(t1Style);
+              const t1 = clonedElement.hasAttribute('data-template1') ? clonedElement : clonedElement.querySelector('[data-template1]');
+              if (t1) {
+                const w = 900;
+                t1.style.width = w + 'px';
+                t1.style.minWidth = w + 'px';
+                t1.style.maxWidth = 'none';
+                t1.style.boxSizing = 'border-box';
+                t1.style.overflow = 'visible';
+                t1.style.marginLeft = '0';
+                t1.style.marginRight = '0';
+                const a4MinPx = Math.ceil(w * (297 / 210));
+                const naturalH = Math.max(t1.scrollHeight, t1.offsetHeight);
+                const targetMinH = Math.max(naturalH + 32, a4MinPx);
+                t1.style.minHeight = `${targetMinH}px`;
+                t1.style.height = 'auto';
+                const innerFlex = t1.firstElementChild;
+                if (innerFlex?.classList?.contains('flex')) {
+                  innerFlex.style.minHeight = `${targetMinH}px`;
+                  innerFlex.style.height = 'auto';
+                  innerFlex.style.width = '100%';
+                  innerFlex.style.minWidth = '100%';
+                  innerFlex.style.alignItems = 'stretch';
+                }
+              }
+            }
+
+            // Template 16: ensure full layout is preserved in clone (matches max-w-3xl = 768px)
+            if (templateId === 16) {
+              const t16 = clonedElement.hasAttribute('data-template16') ? clonedElement : clonedElement.querySelector('[data-template16]');
+              if (t16) {
+                const w = 768;
+                t16.style.width = w + 'px';
+                t16.style.minWidth = w + 'px';
+                t16.style.boxSizing = 'border-box';
+                // Contact bar: force full width in clone (extend past padding)
+                const contactBar = t16.querySelector('[data-template16-contact]');
+                if (contactBar) {
+                  contactBar.style.width = 'calc(100% + 4rem)';
+                  contactBar.style.marginLeft = '-2rem';
+                  contactBar.style.boxSizing = 'border-box';
+                  contactBar.style.display = 'flex';
+                  contactBar.style.justifyContent = 'center';
+                  contactBar.style.alignItems = 'center';
+                  contactBar.style.flexWrap = 'wrap';
+                  contactBar.style.gap = '0.75rem';
+                }
+                // Work experience: ensure flex layout and full-width descriptions in clone
+                t16.querySelectorAll('[data-template16-workdesc]').forEach((el) => {
+                  el.style.width = '100%';
+                  el.style.minWidth = '100%';
+                  el.style.maxWidth = '100%';
+                });
+                const workSection = t16.querySelector('[data-template16-work]');
+                if (workSection) {
+                  workSection.style.display = 'flex';
+                  workSection.style.flexDirection = 'column';
+                  workSection.style.width = '100%';
+                  workSection.style.minWidth = '0';
+                  workSection.querySelectorAll('[data-template16-workentry]').forEach((entry) => {
+                    entry.style.display = 'flex';
+                    entry.style.flexDirection = 'column';
+                    entry.style.width = '100%';
+                    entry.style.minWidth = '0';
+                  });
+                }
+              }
+            }
+
+            // Template 11: ensure two-column layout preserved in clone
+            if (templateId === 11) {
+              const t11 = clonedElement.hasAttribute('data-template11') ? clonedElement : clonedElement.querySelector('[data-template11]');
+              if (t11) {
+                const w = 768;
+                t11.style.width = w + 'px';
+                t11.style.minWidth = w + 'px';
+                t11.style.boxSizing = 'border-box';
+                t11.style.display = 'block';
+                t11.style.fontFamily = 'Georgia, "Times New Roman", serif';
+                const leftCol = t11.querySelector('[data-template11-left]');
+                const cols = leftCol?.parentElement;
+                if (cols) {
+                  cols.style.display = 'flex';
+                  cols.style.gap = '0';
+                  cols.style.width = '100%';
+                }
+                if (leftCol) {
+                  leftCol.style.width = '256px';
+                  leftCol.style.minWidth = '256px';
+                  leftCol.style.flex = 'none';
+                  leftCol.style.borderRight = '2px solid #8B7355';
+                  leftCol.style.paddingRight = '1.5rem';
+                  leftCol.style.textAlign = 'right';
+                }
+                const rightCol = t11.querySelector('[data-template11-right]') || leftCol?.nextElementSibling;
+                if (rightCol) {
+                  rightCol.style.flex = '1';
+                  rightCol.style.minWidth = '400px';
+                  rightCol.style.paddingLeft = '2rem';
+                }
+                // Name border
+                const nameBorder = t11.querySelector('.inline-block');
+                if (nameBorder) {
+                  nameBorder.style.border = '2px solid #8B7355';
+                }
+              }
+            }
+
+            // Template 12: ensure two-column layout preserved in clone + work experience fully visible
+            if (templateId === 12) {
+              const t12 = clonedElement.hasAttribute('data-template12') ? clonedElement : clonedElement.querySelector('[data-template12]');
+              if (t12) {
+                const w = 768;
+                t12.style.width = w + 'px';
+                t12.style.minWidth = w + 'px';
+                t12.style.boxSizing = 'border-box';
+                t12.style.overflow = 'visible';
+                const leftCol = t12.querySelector('[data-template12-left]');
+                const rightCol = t12.querySelector('[data-template12-right]');
+                const cols = leftCol?.parentElement;
+                if (cols) {
+                  cols.style.display = 'flex';
+                  cols.style.width = '100%';
+                  cols.style.overflow = 'visible';
+                }
+                if (leftCol) {
+                  leftCol.style.flex = '1';
+                  leftCol.style.minWidth = '400px';
+                  leftCol.style.overflow = 'visible';
+                }
+                if (rightCol) {
+                  rightCol.style.flex = 'none';
+                  rightCol.style.minWidth = '220px';
+                }
+                // Work experience: ensure full content visible, no clipping; job title rows stay horizontal
+                const workSection = t12.querySelector('[data-template12-work]');
+                if (workSection) {
+                  workSection.style.overflow = 'visible';
+                  workSection.style.minHeight = '0';
+                  workSection.querySelectorAll('.flex.justify-between').forEach((row) => {
+                    row.style.display = 'flex';
+                    row.style.justifyContent = 'space-between';
+                    row.style.alignItems = 'flex-start';
+                    row.style.gap = '0.5rem';
+                    row.style.width = '100%';
+                  });
+                  workSection.querySelectorAll('ul li div').forEach((div) => {
+                    div.style.overflow = 'visible';
+                    div.style.whiteSpace = 'pre-wrap';
+                    div.style.wordBreak = 'break-word';
+                    div.style.overflowWrap = 'break-word';
+                  });
+                }
+              }
+            }
+
+            // Template 13: ensure two-column layout preserved in clone + experience/language flex rows
+            if (templateId === 13) {
+              const t13 = clonedElement.hasAttribute('data-template13') ? clonedElement : clonedElement.querySelector('[data-template13]');
+              if (t13) {
+                const w = 768;
+                t13.style.width = w + 'px';
+                t13.style.minWidth = w + 'px';
+                t13.style.boxSizing = 'border-box';
+                t13.style.overflow = 'visible';
+                const cols = t13.querySelector('.flex');
+                if (cols) {
+                  cols.style.display = 'flex';
+                  cols.style.width = '100%';
+                  const leftCol = cols.children[0];
+                  const rightCol = cols.children[1];
+                  if (leftCol) {
+                    leftCol.style.flex = '1';
+                    leftCol.style.minWidth = '400px';
+                    leftCol.style.overflow = 'visible';
+                  }
+                  if (rightCol) {
+                    rightCol.style.flex = 'none';
+                    rightCol.style.width = '268px';
+                    rightCol.style.minWidth = '200px';
+                  }
+                }
+                // Experience: ensure flex rows keep title + date on same line
+                t13.querySelectorAll('.flex.justify-between').forEach((row) => {
+                  row.style.display = 'flex';
+                  row.style.justifyContent = 'space-between';
+                  row.style.alignItems = 'center';
+                  row.style.gap = '0.75rem';
+                  row.style.flexWrap = 'nowrap';
+                });
+                // Languages: ensure each language item stays on one line (divs from input replacement)
+                t13.querySelectorAll('[data-template13-lang], [data-template13-lang-level]').forEach((el) => {
+                  el.style.whiteSpace = 'nowrap';
+                  if (el.hasAttribute('data-template13-lang')) el.style.minWidth = '90px';
+                  else el.style.minWidth = '70px';
+                });
+                // Skills: ensure 2-column grid layout in clone, prevent overflow
+                const skillsGrid = t13.querySelector('[data-template13-skills]');
+                if (skillsGrid) {
+                  skillsGrid.style.display = 'grid';
+                  skillsGrid.style.gridTemplateColumns = '1fr 1fr';
+                  skillsGrid.style.gap = '0.5rem 0.75rem';
+                  skillsGrid.style.width = '100%';
+                  skillsGrid.style.minWidth = '0';
+                  skillsGrid.style.overflow = 'hidden';
+                  Array.from(skillsGrid.children).forEach((el) => {
+                    el.style.width = '100%';
+                    el.style.minWidth = '0';
+                    el.style.maxWidth = '100%';
+                    el.style.overflow = 'hidden';
+                    el.style.wordWrap = 'break-word';
+                    el.style.overflowWrap = 'break-word';
+                    el.style.whiteSpace = 'normal';
+                    el.style.boxSizing = 'border-box';
+                  });
+                }
+              }
+            }
+
+            // Template 14: ensure layout preserved in clone - match edit menu exactly
+            if (templateId === 14) {
+              const t14 = clonedElement.hasAttribute('data-template14') ? clonedElement : clonedElement.querySelector('[data-template14]');
+              if (t14) {
+                t14.style.width = '768px';
+                t14.style.minWidth = '768px';
+                t14.style.height = 'auto';
+                t14.style.minHeight = '0';
+                t14.style.maxHeight = 'none';
+                t14.style.overflow = 'visible';
+                t14.style.backgroundColor = '#ffffff';
+                t14.style.fontFamily = 'Helvetica, Arial, sans-serif';
+                // Red dividers - extra space below heading, a little down for cleaner PDF look
+                t14.querySelectorAll('[data-template14-divider]').forEach((div) => {
+                  div.style.height = '2px';
+                  div.style.backgroundColor = '#C00000';
+                  div.style.width = '100%';
+                  div.style.marginTop = '0.5rem';
+                  div.style.marginBottom = '1rem';
+                });
+                // Work history: job title + date on same line
+                t14.querySelectorAll('.flex.justify-between').forEach((row) => {
+                  row.style.display = 'flex';
+                  row.style.justifyContent = 'space-between';
+                  row.style.alignItems = 'baseline';
+                  row.style.gap = '0.5rem';
+                  row.style.flexWrap = 'nowrap';
+                });
+                const contactBar = t14.querySelector('[data-template14-contact]');
+                if (contactBar) {
+                  contactBar.style.display = 'flex';
+                  contactBar.style.flexWrap = 'wrap';
+                  contactBar.style.justifyContent = 'center';
+                  contactBar.style.gap = '0.5rem 1rem';
+                  contactBar.style.backgroundColor = '#000000';
+                  contactBar.style.color = '#ffffff';
+                  contactBar.style.padding = '0.625rem 2rem';
+                }
+                const skillsGrid = t14.querySelector('[data-template14-skills]');
+                if (skillsGrid) {
+                  skillsGrid.style.display = 'grid';
+                  skillsGrid.style.gridTemplateColumns = '1fr 1fr';
+                  skillsGrid.style.gap = '0.25rem 2rem';
+                }
+                // Section padding to match edit menu (px-8 pt-6)
+                t14.querySelectorAll('[data-template14-section]').forEach((h) => {
+                  h.style.fontSize = '1.1rem';
+                  h.style.fontWeight = '400';
+                  h.style.color = '#000';
+                });
+                const eduSection = t14.querySelector('[data-template14-education]');
+                if (eduSection) {
+                  eduSection.style.overflow = 'visible';
+                  eduSection.style.display = 'block';
+                  eduSection.style.visibility = 'visible';
+                }
+              }
+            }
+
+            // Template 15: ensure layout preserved in clone - match edit menu
+            if (templateId === 15) {
+              const t15 = clonedElement.hasAttribute('data-template15') ? clonedElement : clonedElement.querySelector('[data-template15]');
+              if (t15) {
+                t15.style.width = '672px';
+                t15.style.minWidth = '672px';
+                t15.style.height = 'auto';
+                t15.style.minHeight = '0';
+                t15.style.maxHeight = 'none';
+                t15.style.overflow = 'visible';
+                t15.style.backgroundColor = '#ffffff';
+                // Work history: job title + date on same line
+                t15.querySelectorAll('.flex.justify-between').forEach((row) => {
+                  row.style.display = 'flex';
+                  row.style.justifyContent = 'space-between';
+                  row.style.alignItems = 'baseline';
+                  row.style.gap = '0.5rem';
+                  row.style.flexWrap = 'nowrap';
+                });
+                // Light blue section bars
+                t15.querySelectorAll('[data-template15-sectionbar]').forEach((bar) => {
+                  bar.style.backgroundColor = '#B8D4E8';
+                  bar.style.padding = '0.5rem 1rem';
+                  bar.style.width = '100%';
+                });
+                // Work bullets: list-style none (we use • in content for reliable PDF), indent to align with company name
+                t15.querySelectorAll('[data-template15-workbullets]').forEach((ul) => {
+                  ul.style.paddingLeft = '0';
+                  ul.style.marginLeft = '0.75rem';
+                  ul.style.listStyleType = 'none';
+                  ul.style.listStyle = 'none';
+                });
+                // Contact bar: flex row so Phone | Email | Location | LinkedIn stay on one line
+                const contactBar15 = t15.querySelector('[data-template15-contact]');
+                if (contactBar15) {
+                  contactBar15.style.display = 'flex';
+                  contactBar15.style.flexDirection = 'row';
+                  contactBar15.style.flexWrap = 'nowrap';
+                  contactBar15.style.justifyContent = 'center';
+                  contactBar15.style.alignItems = 'center';
+                  contactBar15.style.gap = '0.75rem';
+                }
+              }
+            }
+
+            // Template 10: ensure layout preserved in clone
+            if (templateId === 10) {
+              const t10 = clonedElement.hasAttribute('data-template10') ? clonedElement : clonedElement.querySelector('[data-template10]');
+              if (t10) {
+                const w = 768;
+                t10.style.width = w + 'px';
+                t10.style.minWidth = w + 'px';
+                t10.style.boxSizing = 'border-box';
+                const contactBar = t10.querySelector('[data-template10-contact]');
+                if (contactBar) {
+                  contactBar.style.display = 'flex';
+                  contactBar.style.flexWrap = 'wrap';
+                  contactBar.style.gap = '0.5rem 3rem';
+                }
+                // Skills section: keep skill names and bars adjacent, constrain bar container
+                t10.querySelectorAll('[data-template10-skillrow]').forEach((row) => {
+                  row.style.justifyContent = 'flex-start';
+                  row.style.gap = '1rem';
+                });
+                t10.querySelectorAll('[data-template10-skillwrap]').forEach((wrap) => {
+                  wrap.style.flex = 'none';
+                  wrap.style.maxWidth = '280px';
+                });
+                // Force skill bars to render in PDF - explicit pixel dimensions, flex:none so they stay next to skill names
+                t10.querySelectorAll('[data-template10-skillbar]').forEach((track) => {
+                  track.style.display = 'block';
+                  track.style.width = '200px';
+                  track.style.minWidth = '200px';
+                  track.style.flex = 'none';
+                  track.style.height = '10px';
+                  track.style.minHeight = '10px';
+                  track.style.backgroundColor = '#e5e7eb';
+                  track.style.overflow = 'hidden';
+                  const fill = track.firstElementChild;
+                  if (fill) {
+                    const wStr = fill.style.width || '';
+                    const pct = parseFloat(String(wStr)) || 0;
+                    const px = wStr.includes('px') ? parseFloat(wStr) : Math.round(200 * pct / 100);
+                    fill.style.width = px + 'px';
+                    fill.style.minHeight = '10px';
+                    fill.style.height = '10px';
+                    fill.style.backgroundColor = '#374151';
+                    fill.style.display = 'block';
+                  }
+                });
               }
             }
 
@@ -853,13 +2145,31 @@ const Fill_cv = () => {
           // Calculate image dimensions maintaining aspect ratio
           const totalHeight = (canvas.height * imgWidth) / canvas.width;
           const pageCount = Math.ceil(totalHeight / pageHeight) || 1;
-
-          // Add each page showing the correct portion of the image (no repetition)
-          for (let page = 0; page < pageCount; page++) {
-            if (page > 0) pdf.addPage();
-            // Use negative y to "scroll" the image - each page shows the next vertical slice
-            const yOffset = -page * pageHeight;
-            pdf.addImage(imgData, 'PNG', 0, yOffset, imgWidth, totalHeight, undefined, 'FAST');
+          // Avoid nearly-blank last page: scale down to fit on 1 page if last page would have < 50mm
+          // Skip for template 1: that branch centers a narrower image → white bars left/right (not full-bleed)
+          const remainder = totalHeight % pageHeight;
+          const useShrinkLastPage =
+            templateId !== 1 && pageCount > 1 && remainder > 0 && remainder < 50;
+          if (useShrinkLastPage) {
+            const scale = ((pageCount - 1) * pageHeight) / totalHeight;
+            const scaledWidth = imgWidth * scale;
+            const scaledHeight = (pageCount - 1) * pageHeight;
+            pdf.addImage(imgData, 'PNG', (imgWidth - scaledWidth) / 2, 0, scaledWidth, scaledHeight, undefined, 'FAST');
+          } else {
+            for (let page = 0; page < pageCount; page++) {
+              if (page > 0) pdf.addPage();
+              const yOffset = -page * pageHeight;
+              pdf.addImage(imgData, 'PNG', 0, yOffset, imgWidth, totalHeight, undefined, 'FAST');
+              // Template 1: fill unused area below the raster on each page (avoids white strip on A4)
+              if (templateId === 1) {
+                const imgBottom = yOffset + totalHeight;
+                const contentBottomOnPage = Math.min(pageHeight, Math.max(0, imgBottom));
+                if (contentBottomOnPage < pageHeight) {
+                  pdf.setFillColor(0, 0, 0);
+                  pdf.rect(0, contentBottomOnPage, imgWidth, pageHeight - contentBottomOnPage, 'F');
+                }
+              }
+            }
           }
 
           setDownloadProgress(95);
@@ -900,6 +2210,28 @@ const Fill_cv = () => {
             rightCol.style.flex = template7RightBackup.flex || '';
           }
         }
+        template1Backups.forEach(({ el, props, vals }) => {
+          if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
+        });
+        template10Backups.forEach(({ el, props, vals }) => {
+          if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
+        });
+        template11Backups.forEach(({ el, props, vals }) => {
+          if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
+        });
+        template12Backups.forEach(({ el, props, vals }) => {
+          if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
+        });
+        template13Backups.forEach(({ el, props, vals }) => {
+          if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
+        });
+        template14AncestorBackups.forEach(({ el, overflow, overflowY, maxHeight }) => {
+          if (el?.isConnected) {
+            el.style.overflow = overflow || '';
+            el.style.overflowY = overflowY || '';
+            el.style.maxHeight = maxHeight || '';
+          }
+        });
       }
     };
 
@@ -982,6 +2314,33 @@ const Fill_cv = () => {
     setResponsibilities2(newResponsibilities2);
   };
 
+  const resetTemplate1 = () => {
+    if (!window.confirm('Reset template to default? All your edits will be cleared.')) return;
+    setName('YOUR NAME');
+    setProfession('Freelance Software Developer');
+    setBrief('Dedicated software professional with expertise in building scalable applications. Passionate about clean code and user experience.');
+    setSkills(['Creativity', 'Communication', 'Typography', 'Adobe Creative Apps', 'Interactive Media']);
+    setTitle1('Job Title 1');
+    setCompany1('Company Name');
+    setResponsibilities1(['Key responsibility or achievement.', 'Another responsibility or achievement.', 'Third responsibility or achievement.']);
+    setTitle2('Job Title 2');
+    setCompany2('Company Name');
+    setResponsibilities2(['Key responsibility or achievement.', 'Another responsibility or achievement.']);
+    setDegree1('B.S. Computer Science');
+    setSchool('University Name');
+    setDegree2('High School Diploma');
+    setCollege('School Name');
+    setRef1('Reference Name 1');
+    setRef2('Reference Name 2');
+    setInterests(['Movies', 'Coding', 'Music', 'Fitness', 'Writing', 'Karaoke']);
+    setLanguages(['English', 'French', 'German']);
+    setPhone('(555) 555-0123');
+    setEmail('your.email@example.com');
+    setWebsite('www.yourwebsite.com');
+    setAddress('Your Address');
+    setSelectedImage1(null);
+  };
+
   //template one states completed here
   //States for the template two
 
@@ -1010,10 +2369,10 @@ const Fill_cv = () => {
   //   const [nodetemp2, setNodetemp2] = useState("Node.js");
   //   const [pythontemp2, setPythontemp2] = useState("Python");
 
-  const [educationtemp2, setEducationtemp2] = useState("JURIS DOCTOR • JUNE 20XX");
+  const [educationtemp2, setEducationtemp2] = useState("JURIS DOCTOR - JUNE 20XX");
   const [universitytemp2, setUniversitytemp2] = useState("Jasper University, Manhattan, NYC, New York");
   const [educationdetailtemp2, setEducationdetailtemp2] = useState("Real Estate Clinic, 1st place in Moot Court.");
-  const [edu2temp2, setEdu2temp2] = useState("BA IN POLITICAL SCIENCE • JUNE 20XX");
+  const [edu2temp2, setEdu2temp2] = useState("BA IN POLITICAL SCIENCE - JUNE 20XX");
   const [university2temp2, setUniversity2temp2] = useState("Mount Flores College, Small Town, Massachusetts");
 
   const [intereststemp2, setIntereststemp2] = useState(["Literature", "Environmental conservation", "Art", "Yoga", "Skiing", "Travel"]);
@@ -1023,8 +2382,8 @@ const Fill_cv = () => {
     "Detail-oriented and dynamic attorney with experience in business and real estate law. Recognized for analytical abilities and commitment to client success."
   );
 
-  const [post1temp2, setPost1temp2] = useState("IN-HOUSE COUNSEL • MARCH 20XX—PRESENT");
-  const [company1temp2, setCompany1temp2] = useState("Bandter Real Estate • NYC, New York");
+  const [post1temp2, setPost1temp2] = useState("IN-HOUSE COUNSEL - MARCH 20XX—PRESENT");
+  const [company1temp2, setCompany1temp2] = useState("Bandter Real Estate - NYC, New York");
   const [workdone1temp2, setWorkdone1temp2] = useState([
     "Drafting commercial leases and negotiating contracts.",
     "Overseeing due diligence for real estate transactions.",
@@ -1035,8 +2394,8 @@ const Fill_cv = () => {
     setWorkdone1temp2(newworkdone1);
   };
 
-  const [post2temp2, setPost2temp2] = useState("ASSOCIATE ATTORNEY • FEB 20XX—NOV 20XX");
-  const [company2temp2, setCompany2temp2] = useState("Luca Udinesi Law firm • NYC, New York");
+  const [post2temp2, setPost2temp2] = useState("ASSOCIATE ATTORNEY - FEB 20XX—NOV 20XX");
+  const [company2temp2, setCompany2temp2] = useState("Luca Udinesi Law firm - NYC, New York");
   const [workdone2temp2, setWorkdone2temp2] = useState([
     "Representing parties in small business and real estate matters.",
     "Won $25,000 receivership case.",
@@ -1048,8 +2407,8 @@ const Fill_cv = () => {
     setWorkdone2temp2(newworkdone2);
   };
 
-  const [post3temp2, setPost3temp2] = useState("JUNIOR ASSOCIATE ATTORNEY • SEPT 20XX—JAN 20XX");
-  const [company3temp2, setCompany3temp2] = useState("Law Offices of Keita Aoki • NYC, New York");
+  const [post3temp2, setPost3temp2] = useState("JUNIOR ASSOCIATE ATTORNEY - SEPT 20XX—JAN 20XX");
+  const [company3temp2, setCompany3temp2] = useState("Law Offices of Keita Aoki - NYC, New York");
   const [workdone3temp2, setWorkdone3temp2] = useState([
     "Researching legal issues and assisting in multi-million-dollar litigation.",
   ]);
@@ -1457,62 +2816,67 @@ const Fill_cv = () => {
   //states for temp 10
   //states for temp 10
 
-  const [nametemp10, setNametemp10] = useState("Michael Smith");
-  const [professiontemp10, setProfessiontemp10] = useState("Software Engineer");
-  const [aboutmetemp10, setAboutmetemp10] = useState("About Me");
+  // Template 10 - Alina Rudimenko style (grayscale, icons, two-column dates/content, skill progress bars)
+  const [nametemp10, setNametemp10] = useState("Alina Rudimenko");
+  const [professiontemp10, setProfessiontemp10] = useState("IT Consultant - 4+ Years Experience");
+  const [addresstemp10, setAddresstemp10] = useState("350 5th Ave, New York, NY 10118");
+  const [phonetemp10, setPhonetemp10] = useState("718-708-1622");
+  const [emailtemp10, setEmailtemp10] = useState("alina.rudimenko@gmail.com");
+  const [linkedintemp10, setLinkedintemp10] = useState("linkedin.com/in/alinarudimenko");
   const [aboutmeinfotemp10, setAboutmeinfotemp10] = useState(
-    "Dedicated software engineer with 7 years of experience in developing high-performance web applications. Proficient in JavaScript, Python, and cloud technologies"
+    "Experienced IT consultant with a strong background in network administration and cloud solutions. Proven track record of delivering high-impact projects across diverse industries."
   );
-  const [skillslabeltemp10, setSkillslabeltemp10] = useState("Skills");
-  const [skillstemp10, setSkillstemp10] = useState([
-    "JavaScript",
-    "Python",
-    "React.js",
-    "Node.js",
-    "AWS",
-  ]);
-  const handleskillstemp10Chnage = (index, value) => {
-    const newskillstemp10 = [...skillstemp10];
-    newskillstemp10[index] = value;
-    setSkillstemp10(newskillstemp10);
-  };
-
   const [experiencetemp10, setExperiencetemp10] = useState("Experience");
-  const [post1temp10, setPost1temp10] = useState("Senior Software Engineer");
-  const [company1temp10, setCompany1temp10] = useState("Tech Solutions");
+  const [date1temp10, setDate1temp10] = useState("2015-01 - 2017-12");
+  const [post1temp10, setPost1temp10] = useState("IT Consultant");
+  const [company1temp10, setCompany1temp10] = useState("TechCorp Solutions, New York");
   const [workdone1temp10, setWorkdone1temp10] = useState([
-    "Led the development of a scalable e-commerce platform",
-    "Integrated RESTful APIs and third-party services.",
-    "Mentored junior developers and conducted code reviews.",
+    "Key IT Qualifications & Responsibilities",
+    "Key IT Achievements",
   ]);
-
   const handleworkdone1temp10Chnage = (index, value) => {
-    const newworkdone1temp10 = [...workdone1temp10];
-    newworkdone1temp10[index] = value;
-    setWorkdone1temp10(newworkdone1temp10);
+    const arr = [...workdone1temp10];
+    arr[index] = value;
+    setWorkdone1temp10(arr);
   };
-
-  const [post2temp10, setPost2temp10] = useState("Software Engineer");
-  const [company2temp10, setCompany2temp10] = useState("Innovatech");
+  const [date2temp10, setDate2temp10] = useState("2013-06 - 2014-12");
+  const [post2temp10, setPost2temp10] = useState("Junior IT Specialist");
+  const [company2temp10, setCompany2temp10] = useState("StartupXYZ, Brooklyn");
   const [workdone2temp10, setWorkdone2temp10] = useState([
-    "Developed and maintained web applications using React and Node.js.",
-    "Collaborated with cross-functional teams to deliver projects on time.",
-    "Optimized applications for maximum speed and scalability.",
+    "Developed and maintained internal systems.",
+    "Provided technical support to end users.",
   ]);
   const handleworkdone2temp10Change = (index, value) => {
-    const newworkdone2 = [...workdone2temp10];
-    newworkdone2[index] = value;
-    setWorkdone2temp10(newworkdone2);
+    const arr = [...workdone2temp10];
+    arr[index] = value;
+    setWorkdone2temp10(arr);
+  };
+  const [educationlabeltemp10, setEducationlabeltemp10] = useState("Education");
+  const [eduDate1temp10, setEduDate1temp10] = useState("2007-09 - 2012-05");
+  const [facultytemp10, setFacultytemp10] = useState("BA in Network Administration");
+  const [universitytemp10, setUniversitytemp10] = useState("State University, New York");
+  const [gpatemp10, setGpatemp10] = useState("GPA: 3.8");
+  const [skillslabeltemp10, setSkillslabeltemp10] = useState("Skills");
+  const [skillstemp10, setSkillstemp10] = useState([
+    "Agile Development",
+    "Cloud Management",
+    "Network Security",
+    "Database Administration",
+  ]);
+  const [skillLeveltemp10, setSkillLeveltemp10] = useState([85, 75, 90, 70]);
+  const handleskillstemp10Chnage = (index, value) => {
+    const arr = [...skillstemp10];
+    arr[index] = value;
+    setSkillstemp10(arr);
+  };
+  const handleSkillLeveltemp10Change = (index, value) => {
+    const arr = [...skillLeveltemp10];
+    arr[index] = Math.min(100, Math.max(0, parseInt(value) || 0));
+    setSkillLeveltemp10(arr);
   };
 
-  const [educationlabeltemp10, setEducationlabeltemp10] = useState("Education");
-  const [facultytemp10, setFacultytemp10] = useState(
-    "Bachelor of Science in Computer Science"
-  );
-  const [universitytemp10, setUniversitytemp10] = useState("State University");
-  const [datetemp10, setDatetemp10] = useState("09/2010 - 06/2014");
-
-  const hasAutoPopulatedRef = useRef(false);
+  /** Avoid duplicate runs (e.g. React Strict Mode); allow same resume on a different template to fill again */
+  const lastAutoPopulateKeyRef = useRef(null);
   const summaryTemp11Ref = useRef(null);
   const aboutMeTemp10Ref = useRef(null);
   // Auto-expand about textarea (Template 10) - summaryinfotemp11 effect moved below its declaration
@@ -1533,35 +2897,44 @@ const Fill_cv = () => {
 
   // Auto-populate template fields from enhanced CV when available
   useEffect(() => {
-    if (!enhancedResume || !templateId || hasAutoPopulatedRef.current) return;
+    if (!enhancedResume || !templateId) return;
+    const autoKey = `${templateId}\0${enhancedResume}`;
+    if (lastAutoPopulateKeyRef.current === autoKey) return;
     const data = parseEnhancedResumeToStructuredData(enhancedResume);
     if (!data) return;
-    hasAutoPopulatedRef.current = true;
+    lastAutoPopulateKeyRef.current = autoKey;
 
     if (templateId === 10) {
+      if (data.name) setNametemp10(data.name);
       if (data.profession) setProfessiontemp10(data.profession);
+      if (data.contact?.address) setAddresstemp10(data.contact.address);
+      if (data.contact?.phone) setPhonetemp10(data.contact.phone);
+      if (data.contact?.email) setEmailtemp10(data.contact.email);
+      if (data.contact?.linkedin) setLinkedintemp10(data.contact.linkedin);
       if (data.summary) setAboutmeinfotemp10(data.summary);
       if (data.skills.length > 0) {
-        const padded = [...data.skills];
-        while (padded.length < 5) padded.push("");
-        setSkillstemp10(padded.slice(0, 5));
+        const skills = data.skills.slice(0, 4);
+        setSkillstemp10(skills);
+        setSkillLeveltemp10(skills.map((_, i) => 85 - i * 5));
       }
       if (data.experiences.length > 0) {
         const ex0 = data.experiences[0];
+        if (ex0.dateRange) setDate1temp10(ex0.dateRange);
         if (ex0.role) setPost1temp10(ex0.role);
         if (ex0.company) setCompany1temp10(ex0.company);
         if (ex0.responsibilities.length > 0) setWorkdone1temp10(ex0.responsibilities.slice(0, 5));
       }
       if (data.experiences.length > 1) {
         const ex1 = data.experiences[1];
+        if (ex1.dateRange) setDate2temp10(ex1.dateRange);
         if (ex1.role) setPost2temp10(ex1.role);
         if (ex1.company) setCompany2temp10(ex1.company);
         if (ex1.responsibilities.length > 0) setWorkdone2temp10(ex1.responsibilities.slice(0, 5));
       }
       if (data.education.degree) setFacultytemp10(data.education.degree);
       if (data.education.school) setUniversitytemp10(data.education.school);
-      if (data.education.date) setDatetemp10(data.education.date);
-      if (data.name) setNametemp10(data.name);
+      if (data.education.date) setEduDate1temp10(data.education.date);
+      if (data.education.gpa) setGpatemp10(data.education.gpa);
     } else if (templateId === 1) {
       if (data.profession) setProfession(data.profession);
       if (data.summary) setBrief(data.summary);
@@ -1592,26 +2965,26 @@ const Fill_cv = () => {
       if (data.skills.length > 0) setSkillstemp2(data.skills.slice(0, 5));
       if (data.experiences.length > 0) {
         const ex = data.experiences[0];
-        const datePart = ex.dateRange ? ` • ${ex.dateRange}` : '';
+        const datePart = ex.dateRange ? ` - ${ex.dateRange}` : '';
         if (ex.role) setPost1temp2(ex.role.toUpperCase() + datePart);
         if (ex.company) setCompany1temp2(ex.company);
         if (ex.responsibilities.length > 0) setWorkdone1temp2(ex.responsibilities.slice(0, 3));
       }
       if (data.experiences.length > 1) {
         const ex = data.experiences[1];
-        const datePart = ex.dateRange ? ` • ${ex.dateRange}` : '';
+        const datePart = ex.dateRange ? ` - ${ex.dateRange}` : '';
         if (ex.role) setPost2temp2(ex.role.toUpperCase() + datePart);
         if (ex.company) setCompany2temp2(ex.company);
         if (ex.responsibilities.length > 0) setWorkdone2temp2(ex.responsibilities.slice(0, 3));
       }
       if (data.experiences.length > 2) {
         const ex = data.experiences[2];
-        const datePart = ex.dateRange ? ` • ${ex.dateRange}` : '';
+        const datePart = ex.dateRange ? ` - ${ex.dateRange}` : '';
         if (ex.role) setPost3temp2(ex.role.toUpperCase() + datePart);
         if (ex.company) setCompany3temp2(ex.company);
         if (ex.responsibilities.length > 0) setWorkdone3temp2(ex.responsibilities.slice(0, 3));
       }
-      if (data.education.degree) setEducationtemp2(data.education.date ? `${data.education.degree} • ${data.education.date}` : data.education.degree);
+      if (data.education.degree) setEducationtemp2(data.education.date ? `${data.education.degree} - ${data.education.date}` : data.education.degree);
       if (data.education.school) setUniversitytemp2(data.education.school);
       if (data.name) setNametemp2(data.name.replace(/^Name:\s*/i, "").toUpperCase());
     } else if (templateId === 7) {
@@ -1749,47 +3122,225 @@ const Fill_cv = () => {
       if (data.education.degree) setFacultytemp5(data.education.degree);
       if (data.education.school) setUniversitytemp5(data.education.school);
       if (data.education.date) setDatetemp5(data.education.date);
-    } else if (templateId === 11) {
-      if (data.profession) setProfessiontemp11(data.profession);
-      if (data.summary) setSummaryinfotemp11(data.summary);
-      if (data.skills.length > 0) setSkillstemp11(data.skills.slice(0, 4));
+    } else if (templateId === 6) {
+      if (data.name) setNametemp6((data.name.toUpperCase?.() || data.name).trim());
+      if (data.profession) setProfessiontemp6(data.profession);
+      if (data.contact?.phone) setPhonetemp6(data.contact.phone);
+      if (data.contact?.email) setEmailtemp6(data.contact.email);
+      if (data.contact?.location) setLocationtemp6(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp6(data.contact.linkedin);
+      if (data.summary) setProfileinfotemp6(data.summary);
+      if (data.skills.length > 0) {
+        const s = [...data.skills];
+        while (s.length < 6) s.push('');
+        setSkillstemp6(s.slice(0, 6));
+      }
       if (data.experiences.length > 0) {
         const ex = data.experiences[0];
-        if (ex.role) setPost1temp11(ex.role);
-        if (ex.company) setCompany1temp11(ex.company);
-        if (ex.responsibilities.length > 0) setWorkdone1temp11(ex.responsibilities.slice(0, 3));
+        if (ex.role) setPost1temp6(ex.role);
+        if (ex.company) setComapny1temp6(ex.company);
+        if (ex.dateRange) setDate1temp6(ex.dateRange);
+        if (ex.location) setCompany1locationtemp6(ex.location);
+        const bullets = ex.responsibilities || [];
+        const w1 = [...bullets.slice(0, 3)];
+        while (w1.length < 3) w1.push('');
+        setWorkdone1temp6(w1);
       }
       if (data.experiences.length > 1) {
         const ex = data.experiences[1];
+        if (ex.role) setPost2temp6(ex.role);
+        if (ex.company) setCompany2temp6(ex.company);
+        if (ex.dateRange) setDate2temp6(ex.dateRange);
+        if (ex.location) setCompany2locationtemp6(ex.location);
+        const bullets = ex.responsibilities || [];
+        const w2 = [...bullets.slice(0, 3)];
+        while (w2.length < 3) w2.push('');
+        setWorkdone2temp6(w2);
+      }
+      if (data.education.degree) setFacultytemp6(data.education.degree);
+      if (data.education.school) setUniversitytemp6(data.education.school);
+      if (data.education.date) setDatetemp6(data.education.date);
+    } else if (templateId === 11) {
+      if (data.name) setNametemp11(data.name.toUpperCase?.() || data.name);
+      if (data.profession) setProfessiontemp11(data.profession);
+      if (data.contact?.email) setEmailtemp11(data.contact.email);
+      if (data.contact?.phone) setPhonetemp11(data.contact.phone);
+      if (data.contact?.location) setLocationtemp11(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp11(data.contact.linkedin);
+      if (data.summary) setSummaryinfotemp11(data.summary);
+      if (data.skills.length > 0) setSkillstemp11(data.skills.slice(0, 8));
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.dateRange) setDate1temp11(ex.dateRange);
+        if (ex.role) setPost1temp11(ex.role);
+        if (ex.company) setCompany1temp11(ex.company);
+        if (ex.responsibilities.length > 0) setWorkdone1temp11(ex.responsibilities.slice(0, 4));
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.dateRange) setDate2temp11(ex.dateRange);
         if (ex.role) setPost2temp11(ex.role);
         if (ex.company) setCompany2temp11(ex.company);
-        if (ex.responsibilities.length > 0) setworkdone2temp11(ex.responsibilities.slice(0, 3));
+        if (ex.responsibilities.length > 0) setworkdone2temp11(ex.responsibilities.slice(0, 4));
+      }
+      if (data.experiences.length > 2) {
+        const ex = data.experiences[2];
+        if (ex.dateRange) setDate3temp11(ex.dateRange);
+        if (ex.role) setPost3temp11(ex.role);
+        if (ex.company) setCompany3temp11(ex.company);
+        if (ex.responsibilities.length > 0) setWorkdone3temp11(ex.responsibilities.slice(0, 4));
       }
       if (data.education.degree) setFacultytemp11(data.education.degree);
       if (data.education.school) setUniversitytemp11(data.education.school);
       if (data.education.date) setDatetemp11(data.education.date);
-      if (data.name) setNametemp11(data.name);
+    } else if (templateId === 12) {
+      if (data.name) setNametemp12(data.name);
+      if (data.profession) setProfessiontemp12(data.profession);
+      if (data.summary) setSummaryinfotemp12(data.summary);
+      if (data.contact?.location) setLocationtemp12(data.contact.location);
+      if (data.contact?.phone) setPhonetemp12(data.contact.phone);
+      if (data.contact?.email) setEmailtemp12(data.contact.email);
+      if (data.contact?.linkedin) setLinkedintemp12(data.contact.linkedin);
+      if (data.skills.length > 0) {
+        const s = [...data.skills];
+        while (s.length < 6) s.push('');
+        setSkillstemp12(s.slice(0, 8));
+      }
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.dateRange) setDate1temp12(ex.dateRange);
+        if (ex.role) setPost1temp12(ex.role);
+        if (ex.company) setCompany1temp12(ex.company);
+        if (ex.responsibilities.length > 0) setWorkdone1temp12(ex.responsibilities.slice(0, 5));
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.dateRange) setDate2temp12(ex.dateRange);
+        if (ex.role) setPost2temp12(ex.role);
+        if (ex.company) setCompany2temp12(ex.company);
+        if (ex.responsibilities.length > 0) setWorkdone2temp12(ex.responsibilities.slice(0, 5));
+      }
+      if (data.education.degree) setFacultytemp12(data.education.degree);
+      if (data.education.school) setUniversitytemp12(data.education.school);
+      if (data.education.gpa) setAwardstemp12(data.education.gpa);
+      if (data.certifications?.length) setCertificationstemp12(data.certifications.slice(0, 4));
     } else if (templateId === 13) {
       if (data.name) setNametemp13(data.name);
       if (data.profession) setProfessiontemp13(data.profession);
+      if (data.contact?.email) setEmailtemp13(data.contact.email);
+      if (data.contact?.linkedin) setLinkedintemp13(data.contact.linkedin);
+      if (data.contact?.location) setLocationtemp13(data.contact.location);
       if (data.summary) setSummarytemp13(data.summary);
-      if (data.skills.length > 0) { const s = [...data.skills]; while (s.length < 5) s.push(''); setSkillstemp13(s.slice(0, 5)); }
-      if (data.experiences.length > 0) { const ex = data.experiences[0]; if (ex.role) setPost1temp13(ex.role); if (ex.company) setCompany1temp13(ex.company); if (ex.responsibilities.length > 0) setWorkdone1temp13(ex.responsibilities.slice(0, 3)); }
+      if (data.skills.length > 0) setSkillstemp13(data.skills.slice(0, 8));
+      if (data.experiences.length > 0) { const ex = data.experiences[0]; if (ex.role) setPost1temp13(ex.role); if (ex.dateRange) setDate1temp13(ex.dateRange); if (ex.company) setCompany1temp13(ex.company); if (ex.location) setLocation1temp13(ex.location); if (ex.responsibilities.length > 0) setWorkdone1temp13(ex.responsibilities.slice(0, 5)); }
+      if (data.experiences.length > 1) { const ex = data.experiences[1]; if (ex.role) setPost2temp13(ex.role); if (ex.dateRange) setDate2temp13(ex.dateRange); if (ex.company) setCompany2temp13(ex.company); if (ex.location) setLocation2temp13(ex.location); if (ex.responsibilities.length > 0) setWorkdone2temp13(ex.responsibilities.slice(0, 4)); }
       if (data.education.degree) setFacultytemp13(data.education.degree);
+      if (data.education.date) setDateedutemp13(data.education.date);
       if (data.education.school) setUniversitytemp13(data.education.school);
-      if (data.education.date) setDatetemp13(data.education.date);
+      if (data.certifications?.length) setCertificationstemp13(data.certifications.slice(0, 3).map(c => typeof c === 'string' ? { title: c, issuer: '' } : { title: c.name || c.title || c, issuer: c.issuer || c.provider || '' }));
     } else if (templateId === 14) {
-      if (data.name) setNametemp14(data.name);
-      if (data.profession) setProfessiontemp14(data.profession);
-      if (data.skills.length > 0) setSkillstemp14(data.skills.slice(0, 4));
-      if (data.experiences.length > 0) { const ex = data.experiences[0]; if (ex.role) setPost1temp14(ex.role); if (ex.company) setCompany1temp14(ex.company); if (ex.responsibilities.length > 0) setWorkdone1temp14(ex.responsibilities.slice(0, 2)); }
+      if (data.name) {
+        const parts = data.name.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          setFirstnametemp14(parts[0].toUpperCase());
+          setLastnametemp14(parts.slice(1).join(' ').toUpperCase());
+        } else if (parts.length === 1) {
+          setFirstnametemp14(parts[0].toUpperCase());
+        }
+      }
+      if (data.contact?.location) setLocationtemp14(data.contact.location);
+      if (data.contact?.phone) setPhonetemp14(data.contact.phone);
+      if (data.contact?.email) setEmailtemp14(data.contact.email);
+      if (data.summary) setSummarytemp14(data.summary);
+      if (data.skills.length > 0) setSkillstemp14(data.skills.slice(0, 8));
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.role) setPost1temp14(ex.role);
+        if (ex.dateRange) setDate1temp14(ex.dateRange);
+        if (ex.company) setCompany1temp14(ex.company);
+        const w1 = [...(ex.responsibilities || []).slice(0, 5)];
+        while (w1.length < 5) w1.push('');
+        setWorkdone1temp14(w1);
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.role) setPost2temp14(ex.role);
+        if (ex.dateRange) setDate2temp14(ex.dateRange);
+        if (ex.company) setCompany2temp14(ex.company);
+        const w2 = [...(ex.responsibilities || []).slice(0, 5)];
+        while (w2.length < 5) w2.push('');
+        setWorkdone2temp14(w2);
+      }
       if (data.education.degree) setFacultytemp14(data.education.degree);
-      if (data.education.school) setUniversitytemp14(data.education.school);
+      if (data.education.school) setUniversitytemp14(data.education.school + (data.education.location ? ` - ${data.education.location}` : ''));
+      if (data.experiences.length > 2) {
+        const ex = data.experiences[2];
+        if (ex.role) setPost3temp14(ex.role);
+        if (ex.dateRange) setDate3temp14(ex.dateRange);
+        if (ex.company) setCompany3temp14(ex.company);
+        const w3 = [...(ex.responsibilities || []).slice(0, 5)];
+        while (w3.length < 3) w3.push('');
+        setWorkdone3temp14(w3);
+      }
     } else if (templateId === 15) {
-      if (data.name) setNametemp15(data.name);
-      if (data.summary) setResearchfocustemp15(data.summary);
-      if (data.education.degree) setEducationtemp15([data.education.degree, data.education.school || '', data.education.date || '']);
-      if (data.experiences.length > 0) setTeachingtemp15([data.experiences[0].role || '', data.experiences[0].company || '', data.experiences[0].date || '']);
+      if (data.name) setNametemp15(data.name.toUpperCase());
+      if (data.contact?.phone) setPhonetemp15(data.contact.phone);
+      if (data.contact?.email) setEmailtemp15(data.contact.email);
+      if (data.contact?.location) setLocationtemp15(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp15(data.contact.linkedin);
+      if (data.summary) setSummarytemp15(data.summary);
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.role) setPost1temp15(ex.role);
+        if (ex.dateRange) setDate1temp15(ex.dateRange);
+        if (ex.company) setCompany1temp15(ex.company);
+        if (ex.location) setLocation1temp15(ex.location);
+        if (ex.responsibilities.length > 0) setWorkdone1temp15(ex.responsibilities.slice(0, 5));
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.role) setPost2temp15(ex.role);
+        if (ex.dateRange) setDate2temp15(ex.dateRange);
+        if (ex.company) setCompany2temp15(ex.company);
+        if (ex.location) setLocation2temp15(ex.location);
+        if (ex.responsibilities.length > 0) setWorkdone2temp15(ex.responsibilities.slice(0, 5));
+      }
+      if (data.education.school) setUniversitytemp15(data.education.school);
+      if (data.education.location) setLocationedutemp15(data.education.location);
+      if (data.education.date) setDateedutemp15(data.education.date);
+      if (data.education.degree) setDegreetemp15(data.education.degree);
+      if (data.skills.length > 0) setTechnicalSkillstemp15(data.skills.slice(0, 8).join(', '));
+    } else if (templateId === 16) {
+      if (data.name) setNametemp16(data.name.toUpperCase());
+      if (data.summary) setProfiletemp16(data.summary);
+      if (data.skills.length > 0) {
+        const s = [...data.skills];
+        while (s.length < 9) s.push('');
+        setSkillstemp16(s.slice(0, 9));
+      }
+      if (data.experiences.length > 0) {
+        const ex = data.experiences[0];
+        if (ex.company) setCompany1temp16(ex.company);
+        if (ex.role) setPost1temp16(ex.role);
+        if (ex.dateRange) setDate1temp16(ex.dateRange);
+        if (ex.responsibilities.length > 0) {
+          setWorkdesc1temp16(ex.responsibilities[0]);
+          setWorkdone1temp16(ex.responsibilities.slice(1, 4));
+        }
+      }
+      if (data.experiences.length > 1) {
+        const ex = data.experiences[1];
+        if (ex.company) setCompany2temp16(ex.company);
+        if (ex.role) setPost2temp16(ex.role);
+        if (ex.dateRange) setDate2temp16(ex.dateRange);
+        if (ex.responsibilities.length > 0) {
+          setWorkdesc2temp16(ex.responsibilities[0]);
+          setWorkdone2temp16(ex.responsibilities.slice(1, 3));
+        }
+      }
+      if (data.education.school) setUniversitytemp16(data.education.school);
+      if (data.education.degree) setFacultytemp16(data.education.degree);
+      if (data.education.date) setYear16temp16(data.education.date);
     }
   }, [enhancedResume, templateId]);
 
@@ -1798,16 +3349,22 @@ const Fill_cv = () => {
     const doc = new jsPDF();
     const margin = 20;
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const maxYBody = pageHeight - margin;
+    const maxYLine = maxYBody - 5;
+    const maxYSection = maxYBody - 20;
     const maxWidth = pageWidth - margin * 2;
     const lineHeight = 6;
     let y = 20;
 
-    // Only use Enhanced Reference when NO template is selected; otherwise use template edits
-    const useReferenceContent = editableRefContent?.trim() && editableRefContent.length > 50 && (!templateId || templateId < 1 || templateId > 15);
+    // Only use Enhanced Reference when no valid template id (e.g. missing URL param gives 0, not falsy-check safe)
+    const hasValidCvTemplate = Number.isFinite(templateId) && templateId >= 1 && templateId <= 16;
+    const useReferenceContent =
+      Boolean(editableRefContent?.trim() && editableRefContent.length > 50 && !hasValidCvTemplate);
     if (useReferenceContent) {
       const data = parseEnhancedResumeToStructuredData(editableRefContent);
       const addSection = (title, content) => {
-        if (y > 265) {
+        if (y > maxYSection) {
           doc.addPage();
           y = 20;
         }
@@ -1824,7 +3381,7 @@ const Fill_cv = () => {
         const text = typeof content === 'string' ? content : (content || '').toString();
         const lines = doc.splitTextToSize(text, maxWidth);
         lines.forEach((line) => {
-          if (y > 270) {
+          if (y > maxYLine) {
             doc.addPage();
             y = 20;
           }
@@ -1847,7 +3404,7 @@ const Fill_cv = () => {
           const expText = data.experiences.map((ex) => {
             const parts = [ex.role && ex.company ? `${ex.role} at ${ex.company}` : ex.role || ex.company, ex.dateRange].filter(Boolean);
             const header = parts.join(' — ');
-            const bullets = (ex.responsibilities || []).filter(Boolean).map((r) => `• ${r}`).join('\n');
+            const bullets = (ex.responsibilities || []).filter(Boolean).map((r) => r).join('\n');
             return [header, bullets].filter(Boolean).join('\n');
           }).join('\n\n');
           addSection('Experience', expText);
@@ -1861,7 +3418,7 @@ const Fill_cv = () => {
         const condensed = editableRefContent.replace(/\n{3,}/g, '\n\n').trim();
         const lines = doc.splitTextToSize(condensed, maxWidth);
         lines.forEach((line) => {
-          if (y > 270) {
+          if (y > maxYLine) {
             doc.addPage();
             y = 20;
           }
@@ -1875,7 +3432,7 @@ const Fill_cv = () => {
     }
 
     const addSection = (title, content) => {
-      if (y > 265) {
+      if (y > maxYSection) {
         doc.addPage();
         y = 20;
       }
@@ -1891,7 +3448,7 @@ const Fill_cv = () => {
       doc.setTextColor(31, 41, 55);
       const lines = doc.splitTextToSize(content || '', maxWidth);
       lines.forEach((line) => {
-        if (y > 270) {
+        if (y > maxYLine) {
           doc.addPage();
           y = 20;
         }
@@ -1904,25 +3461,33 @@ const Fill_cv = () => {
     if (templateId === 10) {
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 64, 175);
+      doc.setTextColor(30, 30, 30);
       doc.text(nametemp10 || 'Your Name', margin, y);
       y += lineHeight;
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
+      doc.setTextColor(80, 80, 80);
       doc.text(professiontemp10 || 'Professional Title', margin, y);
-      y += lineHeight * 2;
+      y += lineHeight;
+      const contactLine = [addresstemp10, phonetemp10, emailtemp10, linkedintemp10].filter(Boolean).join(' | ');
+      if (contactLine) {
+        doc.setFontSize(10);
+        doc.text(contactLine, margin, y);
+        y += lineHeight;
+      }
+      y += 4;
 
-      addSection(aboutmetemp10, aboutmeinfotemp10);
-      const skillsText = skillstemp10.filter(s => s && String(s).trim()).join(', ');
-      addSection(skillslabeltemp10, skillsText);
+      addSection('Summary', aboutmeinfotemp10);
       addSection(experiencetemp10, [
-        `${post1temp10} at ${company1temp10}`,
-        ...(workdone1temp10.filter(Boolean).map((r) => `• ${r}`)),
+        `${date1temp10 || ''} ${post1temp10} at ${company1temp10}`,
+        ...(workdone1temp10.filter(Boolean).map((r) => r)),
         '',
-        `${post2temp10} at ${company2temp10}`,
-        ...(workdone2temp10.filter(Boolean).map((r) => `• ${r}`)),
+        `${date2temp10 || ''} ${post2temp10} at ${company2temp10}`,
+        ...(workdone2temp10.filter(Boolean).map((r) => r)),
       ].join('\n'));
-      addSection(educationlabeltemp10, `${facultytemp10}\n${universitytemp10}\n${datetemp10}`);
+      addSection(educationlabeltemp10, `${facultytemp10}\n${universitytemp10}\n${eduDate1temp10 || ''}\n${gpatemp10 || ''}`);
+      const skillsText = skillstemp10.filter(s => s && String(s).trim()).map((s, i) => `${s} (${skillLeveltemp10[i] ?? 0}%)`).join(', ');
+      addSection(skillslabeltemp10, skillsText);
     } else if (templateId === 1) {
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
@@ -1935,10 +3500,10 @@ const Fill_cv = () => {
       addSection('Skills', skills.filter(s => s && String(s).trim()).join(', '));
       addSection('Experience', [
         `${title1} at ${company1}`,
-        ...(responsibilities1.filter(Boolean).map((r) => `• ${r}`)),
+        ...(responsibilities1.filter(Boolean).map((r) => r)),
         '',
         `${title2} at ${company2}`,
-        ...(responsibilities2.filter(Boolean).map((r) => `• ${r}`)),
+        ...(responsibilities2.filter(Boolean).map((r) => r)),
       ].join('\n'));
       addSection('Education', `${degree1}\n${school}\n${degree2}\n${college}`);
       addSection('References', `${ref1}\n${ref2}`);
@@ -1982,7 +3547,7 @@ const Fill_cv = () => {
       let yRight = 22;
 
       const addLeftSection = (title, content) => {
-        if (yLeft > 265) return;
+        if (yLeft > maxYSection) return;
         yLeft += 3;
         doc.setFontSize(9);
         doc.setFont('helvetica', 'bold');
@@ -1996,7 +3561,7 @@ const Fill_cv = () => {
         doc.setFontSize(9);
         const lines = doc.splitTextToSize(content || '', leftTextW - 2);
         lines.forEach((line) => {
-          if (yLeft > 270) return;
+          if (yLeft > maxYLine) return;
           doc.text(line, leftPad + 2, yLeft);
           yLeft += lineHeight - 0.5;
         });
@@ -2004,7 +3569,7 @@ const Fill_cv = () => {
       };
 
       const addRightSection = (title, content) => {
-        if (yRight > 265) {
+        if (yRight > maxYSection) {
           doc.addPage();
           yRight = 20;
         }
@@ -2022,7 +3587,7 @@ const Fill_cv = () => {
         doc.setTextColor(31, 41, 55);
         const lines = doc.splitTextToSize(content || '', rightWidth);
         lines.forEach((line) => {
-          if (yRight > 270) {
+          if (yRight > maxYLine) {
             doc.addPage();
             yRight = 20;
           }
@@ -2067,7 +3632,7 @@ const Fill_cv = () => {
 
       doc.setTextColor(255, 255, 255);
       addLeftSection(contactlabeltemp7, [phonetemp7, emailtemp7, websitetemp7, locationtemp7].filter(Boolean).join('\n'));
-      addLeftSection(skillslabeltemp7, skillstemp7.filter(s => s && String(s).trim()).map(s => '• ' + s).join('\n'));
+      addLeftSection(skillslabeltemp7, skillstemp7.filter(s => s && String(s).trim()).map(s => s).join('\n'));
       addLeftSection(educationlabeltemp7, `${facultytemp7}\n${universitytemp7}\n${datetemp7}`);
 
       addRightSection(profilelabeltemp7, stripHtml(profiletemp7));
@@ -2106,16 +3671,19 @@ const Fill_cv = () => {
       doc.setFontSize(12);
       doc.text(professiontemp11 || 'Professional Title', margin, y);
       y += lineHeight * 2;
-      addSection(summarytemp11, summaryinfotemp11);
+      if (summaryinfotemp11) addSection(summarytemp11, summaryinfotemp11);
       addSection(skilllabelstemp11, skillstemp11.filter(s => s && String(s).trim()).join(', '));
       addSection(experiencetemp11, [
-        `${post1temp11} at ${company1temp11}`,
-        ...(workdone1temp11.filter(Boolean).map((r) => `• ${r}`)),
+        `${date1temp11 || ''} ${post1temp11} at ${company1temp11}`,
+        ...(workdone1temp11.filter(Boolean).map((r) => r)),
         '',
-        `${post2temp11} at ${company2temp11}`,
-        ...(workdone2temp11.filter(Boolean).map((r) => `• ${r}`)),
+        `${date2temp11 || ''} ${post2temp11} at ${company2temp11}`,
+        ...(workdone2temp11.filter(Boolean).map((r) => r)),
+        '',
+        `${date3temp11 || ''} ${post3temp11} at ${company3temp11}`,
+        ...(workdone3temp11.filter(Boolean).map((r) => r)),
       ].join('\n'));
-      addSection(educationtemp11, `${facultytemp11}\n${universitytemp11}\n${datetemp11}`);
+      addSection(educationtemp11, `${facultytemp11}\n${universitytemp11}\n${datetemp11 || ''}`);
     } else if (templateId === 3) {
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
@@ -2176,10 +3744,10 @@ const Fill_cv = () => {
       y += lineHeight * 2;
       addSection(experiencetemp5, [
         `${company1temp5}\n${company1locationtemp5}\n${post1temp5}\n${date1temp5}`,
-        ...(workdone1temp5.filter(Boolean).map((r) => `• ${stripHtml(r)}`)),
+        ...(workdone1temp5.filter(Boolean).map((r) => stripHtml(r))),
         '',
         `${company2temp5}\n${company2locationtemp5}\n${post2temp5}\n${date2temp5}`,
-        ...(workdone2temp5.filter(Boolean).map((r) => `• ${stripHtml(r)}`)),
+        ...(workdone2temp5.filter(Boolean).map((r) => stripHtml(r))),
       ].join('\n'));
       addSection(educationtemp5, `${universitytemp5}\n${facultytemp5}${datetemp5 ? '\n' + datetemp5 : ''}`);
       addSection(skillstemp5, skillsdetailtemp5.filter(s => s && String(stripHtml(s)).trim()).map(stripHtml).join(', '));
@@ -2194,10 +3762,10 @@ const Fill_cv = () => {
       addSection(summarylabeltemp6, stripHtml(profileinfotemp6));
       addSection(experiencetemp6, [
         `${post1temp6} at ${company1temp6} | ${date1temp6}`,
-        ...(workdone1temp6.filter(Boolean).map((r) => `• ${stripHtml(r)}`)),
+        ...(workdone1temp6.filter(Boolean).map((r) => stripHtml(r))),
         '',
         `${post2temp6} at ${company2temp6} | ${date2temp6}`,
-        ...(workdone2temp6.filter(Boolean).map((r) => `• ${stripHtml(r)}`)),
+        ...(workdone2temp6.filter(Boolean).map((r) => stripHtml(r))),
       ].join('\n'));
       addSection(educationlabeltemp6, `${facultytemp6}\n${universitytemp6}\n${datetemp6}\n\n${faculty2temp6}\n${university2temp6}\n${date2temp6Edu}`);
       addSection(achievementslabeltemp6, achievementstemp6.map(a => `${a.title}: ${stripHtml(a.desc)}`).join('\n'));
@@ -2217,7 +3785,7 @@ const Fill_cv = () => {
 
       const profileMaxW = 150;
       const addSection9Centered = (title, content) => {
-        if (y > 265) { doc.addPage(); y = 20; }
+        if (y > maxYSection) { doc.addPage(); y = 20; }
         if (title) {
           doc.setFontSize(10);
           doc.setFont('helvetica', 'bold');
@@ -2230,7 +3798,7 @@ const Fill_cv = () => {
         doc.setTextColor(60, 70, 85);
         const lines = doc.splitTextToSize(content || '', profileMaxW);
         lines.forEach((line) => {
-          if (y > 270) { doc.addPage(); y = 20; }
+          if (y > maxYLine) { doc.addPage(); y = 20; }
           doc.text(line, centerX, y, { align: 'center' });
           y += lineHeight;
         });
@@ -2238,7 +3806,7 @@ const Fill_cv = () => {
       };
 
       const addLeftSection9 = (title, content) => {
-        if (yLeft > 265) { doc.addPage(); yLeft = 20; yRight = 20; }
+        if (yLeft > maxYSection) { doc.addPage(); yLeft = 20; yRight = 20; }
         if (title) {
           doc.setFontSize(9);
           doc.setFont('helvetica', 'bold');
@@ -2251,7 +3819,7 @@ const Fill_cv = () => {
         doc.setTextColor(60, 70, 85);
         const lines = doc.splitTextToSize(content || '', leftTextW);
         lines.forEach((line) => {
-          if (yLeft > 270) return;
+          if (yLeft > maxYLine) return;
           doc.text(line, margin, yLeft);
           yLeft += lineHeight - 0.3;
         });
@@ -2259,7 +3827,7 @@ const Fill_cv = () => {
       };
 
       const addRightSection9WithTimeline = (title, entries) => {
-        if (yRight > 265) { doc.addPage(); yRight = 20; yLeft = 20; }
+        if (yRight > maxYSection) { doc.addPage(); yRight = 20; yLeft = 20; }
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
@@ -2270,7 +3838,7 @@ const Fill_cv = () => {
         const timelineX = rightStart - 6;
         doc.line(timelineX, yRight, timelineX, 280);
         entries.forEach((entry) => {
-          if (yRight > 270) return;
+          if (yRight > maxYLine) return;
           doc.setFontSize(10);
           doc.setTextColor(...tan9);
           doc.text('\u2022', timelineX - 1, yRight + 2);
@@ -2285,7 +3853,7 @@ const Fill_cv = () => {
           doc.setTextColor(55, 65, 81);
           const lines = doc.splitTextToSize(entry.content || '', rightWidth);
           lines.forEach((line) => {
-            if (yRight > 270) return;
+            if (yRight > maxYLine) return;
             doc.text(line, rightStart, yRight);
             yRight += lineHeight - 0.5;
           });
@@ -2330,11 +3898,11 @@ const Fill_cv = () => {
       const workEntries = [
         {
           title: post1temp9,
-          content: [company1temp9, stripHtml(workdesc1temp9), ...(wrokdone1temp9.filter(Boolean).map((r) => '• ' + stripHtml(r)))].filter(Boolean).join('\n'),
+          content: [company1temp9, stripHtml(workdesc1temp9), ...(wrokdone1temp9.filter(Boolean).map((r) => stripHtml(r)))].filter(Boolean).join('\n'),
         },
         {
           title: post2temp9,
-          content: [company2temp9, stripHtml(workdesc2temp9), ...(workdone2temp9.filter(Boolean).map((r) => '• ' + stripHtml(r)))].filter(Boolean).join('\n'),
+          content: [company2temp9, stripHtml(workdesc2temp9), ...(workdone2temp9.filter(Boolean).map((r) => stripHtml(r)))].filter(Boolean).join('\n'),
         },
       ];
       addRightSection9WithTimeline(worklabeltemp9, workEntries);
@@ -2346,15 +3914,19 @@ const Fill_cv = () => {
       doc.setFontSize(12);
       doc.text(professiontemp12 || 'Professional Title', margin, y);
       y += lineHeight * 2;
-      addSection(profiletemp12, profileinfotemp12);
+      if (summaryinfotemp12?.trim()) addSection('Professional Summary', summaryinfotemp12);
       addSection(experiencetemp12, [
-        `${post1temp12} at ${company1temp12}`,
-        ...(workdone1temp12.filter(Boolean).map((r) => `• ${r}`)),
+        `${post1temp12} (${date1temp12 || ''}) at ${company1temp12}`,
+        ...(workdone1temp12.filter(Boolean).map((r) => r)),
         '',
-        `${post2temp12} at ${company2temp12}`,
-        ...(workdone2temp12.filter(Boolean).map((r) => `• ${r}`)),
+        `${post2temp12} (${date2temp12 || ''}) at ${company2temp12}`,
+        ...(workdone2temp12.filter(Boolean).map((r) => r)),
       ].join('\n'));
-      addSection(educationtemp12, `${facultytemp12}\n${universitytemp12}\n${datetemp12}`);
+      const contactStr = [locationtemp12, phonetemp12, emailtemp12, linkedintemp12, githublinktemp12].filter(Boolean).join(' | ');
+      if (contactStr) addSection('Contact', contactStr);
+      if (skillstemp12?.length) addSection('Skills', skillstemp12.filter(Boolean).join(', '));
+      addSection(educationtemp12, `${facultytemp12}\n${universitytemp12}\n${awardstemp12 || ''}`);
+      if (certificationstemp12?.length) addSection(othertemp12, certificationstemp12.filter(Boolean).join('\n'));
     } else if (templateId === 13) {
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
@@ -2364,37 +3936,165 @@ const Fill_cv = () => {
       doc.text(professiontemp13 || 'Professional Title', margin, y);
       y += lineHeight * 2;
       addSection('Professional Summary', summarytemp13);
+      addSection('Experience', [`${post1temp13} (${date1temp13 || ''}) at ${company1temp13}`, ...(workdone1temp13.filter(Boolean).map((r) => r)), '', `${post2temp13} (${date2temp13 || ''}) at ${company2temp13}`, ...(workdone2temp13.filter(Boolean).map((r) => r))].join('\n'));
+      addSection('Education', `${facultytemp13}${dateedutemp13 ? ` (${dateedutemp13})` : ''}\n${universitytemp13}${locationedutemp13 ? `, ${locationedutemp13}` : ''}`);
       addSection('Skills', skillstemp13.filter(s => s && String(s).trim()).join(', '));
-      addSection('Experience', [`${post1temp13} at ${company1temp13}`, ...(workdone1temp13.filter(Boolean).map((r) => `• ${r}`))].join('\n'));
-      addSection('Education', `${facultytemp13}\n${universitytemp13}\n${datetemp13}`);
+      if (achievementstemp13?.length) addSection('Achievements', achievementstemp13.map(a => `${a.title}: ${a.desc || ''}`).filter(Boolean).join('\n'));
+      if (projectstemp13?.length) addSection('Projects', projectstemp13.map(p => `${p.title}\n${p.desc || ''}\n${p.link || ''}`).filter(Boolean).join('\n\n'));
+      if (certificationstemp13?.length) addSection('Certification', certificationstemp13.map(c => `${c.title} - ${c.issuer || ''}`).filter(Boolean).join('\n'));
+      if (passionstemp13?.length) addSection('Passions', passionstemp13.map(p => `${p.title}: ${p.desc || ''}`).filter(Boolean).join('\n'));
+      if (languagestemp13?.length) addSection('Languages', languagestemp13.map(l => `${l.name} (${l.level || ''}) ${l.dots || 0}/5`).join(', '));
     } else if (templateId === 14) {
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
-      doc.text(nametemp14 || 'Your Name', margin, y);
-      y += lineHeight;
-      doc.setFontSize(12);
-      doc.text(professiontemp14 || 'Professional Title', margin, y);
-      y += lineHeight * 2;
-      addSection('Contact', contacttemp14);
-      addSection('Skills', skillstemp14.filter(s => s && String(s).trim()).join(', '));
-      addSection('Experience', [`${post1temp14} at ${company1temp14}`, ...(workdone1temp14.filter(Boolean).map((r) => `• ${r}`))].join('\n'));
-      addSection('Education', `${facultytemp14}\n${universitytemp14}`);
+      doc.setTextColor(0, 0, 0);
+      doc.text((firstnametemp14 || 'FIRST') + ' ', margin, y);
+      doc.setTextColor(192, 0, 0);
+      doc.text(lastnametemp14 || 'LAST', margin + doc.getTextWidth((firstnametemp14 || 'FIRST') + ' '), y);
+      doc.setTextColor(0, 0, 0);
+      y += lineHeight + 4;
+      doc.setFillColor(0, 0, 0);
+      doc.rect(0, y - 3, pageWidth, 10, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const contactStr14 = [locationtemp14, phonetemp14, emailtemp14].filter(Boolean).join(' | ');
+      doc.text(contactStr14, margin, y + 6, { align: 'left' });
+      doc.setTextColor(0, 0, 0);
+      y += 14;
+      addSection('Professional Summary', summarytemp14);
+      const workHist14 = [
+        `${post1temp14} (${date1temp14 || ''})`, company1temp14, ...(workdone1temp14.filter(Boolean).map((r) => '• ' + r)),
+        '', `${post2temp14} (${date2temp14 || ''})`, company2temp14, ...(workdone2temp14.filter(Boolean).map((r) => '• ' + r))
+      ];
+      if (post3temp14 || company3temp14) {
+        workHist14.push('', `${post3temp14} (${date3temp14 || ''})`, company3temp14, ...(workdone3temp14.filter(Boolean).map((r) => '• ' + r)));
+      }
+      addSection('Work History', workHist14.join('\n'));
+      addSection('Skills', skillstemp14.filter(s => s && String(s).trim()).map(s => '• ' + s).join('\n'));
+      const edu14 = [facultytemp14, universitytemp14];
+      if (faculty2temp14 || university2temp14) edu14.push('', faculty2temp14, university2temp14);
+      addSection('Education', edu14.filter(Boolean).join('\n'));
     } else if (templateId === 15) {
       doc.setFontSize(20);
-      doc.setFont('helvetica', 'bold');
-      doc.text(nametemp15 || 'Your Name', margin, y);
-      y += lineHeight;
-      doc.setFontSize(10);
-      doc.text(subtitletemp15 || 'ACADEMIC CURRICULUM VITAE', margin, y);
-      y += lineHeight;
-      doc.text([phonetemp15, emailtemp15, webtemp15, addresstemp15].filter(Boolean).join(' | '), margin, y);
+      doc.setFont('times', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text((nametemp15 || 'YOUR NAME').toUpperCase(), pageWidth / 2, y, { align: 'center' });
+      y += lineHeight + 2;
+      doc.setDrawColor(180, 180, 180);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      const contact15 = [phonetemp15, emailtemp15, locationtemp15, linkedintemp15].filter(Boolean).join(' | ');
+      doc.text(contact15, pageWidth / 2, y, { align: 'center' });
       y += lineHeight * 2;
-      addSection('Education', educationtemp15.filter(Boolean).join('\n'));
-      addSection('Research Focus', researchfocustemp15);
-      addSection('Publications', publicationstemp15.filter(Boolean).map((p) => `• ${p}`).join('\n'));
-      addSection('Awards & Grants', awardstemp15.filter(Boolean).map((a) => `• ${a}`).join('\n'));
-      addSection('Selected Presentations', presentationstemp15.filter(Boolean).map((p) => `• ${p}`).join('\n'));
-      addSection('Teaching Experience', teachingtemp15.filter(Boolean).join('\n'));
+      addSection('SUMMARY', summarytemp15);
+      const work15 = [`${post1temp15} (${date1temp15 || ''})`, `${company1temp15}${location1temp15 ? ' | ' + location1temp15 : ''}`, ...(workdone1temp15.filter(Boolean).map((r) => '• ' + r)), '', `${post2temp15} (${date2temp15 || ''})`, `${company2temp15}${location2temp15 ? ' | ' + location2temp15 : ''}`, ...(workdone2temp15.filter(Boolean).map((r) => '• ' + r))];
+      addSection('PROFESSIONAL EXPERIENCE', work15.join('\n'));
+      addSection('EDUCATION', `${universitytemp15}${locationedutemp15 ? ' - ' + locationedutemp15 : ''} (${dateedutemp15 || ''})\n${degreetemp15}${majortemp15 ? ', ' + majortemp15 : ''}`);
+      addSection('SKILLS', `Technical Skills: ${technicalSkillstemp15}\nSoft Skills: ${softSkillstemp15}\nLanguages: ${languagesTemp15}`);
+    } else if (templateId === 16) {
+      const centerX = pageWidth / 2;
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text((nametemp16 || 'YOUR NAME').toUpperCase(), centerX, y, { align: 'center' });
+      y += lineHeight + 4;
+      doc.setFillColor(232, 232, 232);
+      doc.rect(0, y - 3, pageWidth, 10, 'F');
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(60, 60, 60);
+      const contactStr = [locationtemp16, phonetemp16, emailtemp16, linkedintemp16].filter(Boolean).join(' | ');
+      doc.text(contactStr, centerX, y + 4, { align: 'center' });
+      y += 14;
+      const addSection16 = (title, content) => {
+        if (y > maxYSection) { doc.addPage(); y = 20; }
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.2);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 4;
+        if (title) {
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(0, 0, 0);
+          const spaced = (title || '').split('').join(' ');
+          doc.text(spaced.toUpperCase(), centerX, y, { align: 'center' });
+          y += 4;
+        }
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 6;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(50, 50, 50);
+        const lines = doc.splitTextToSize(content || '', maxWidth);
+        lines.forEach((line) => {
+          if (y > maxYLine) { doc.addPage(); y = 20; }
+          doc.text(line, margin, y);
+          y += lineHeight;
+        });
+        y += 6;
+      };
+      addSection16('PROFESSIONAL PROFILE', stripHtml(profiletemp16));
+      addSection16(skillslabeltemp16, skillstemp16.filter(Boolean).join('\n'));
+      if (y > maxYSection) { doc.addPage(); y = 20; }
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.2);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 4;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      const workSpaced = (worklabeltemp16 || 'WORK EXPERIENCE').split('').join(' ');
+      doc.text(workSpaced.toUpperCase(), centerX, y, { align: 'center' });
+      y += 4;
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+      const addWorkEntry16 = (company, title, date, loc, desc, bullets) => {
+        if (y > maxYSection) { doc.addPage(); y = 20; }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.text(company || '', margin, y);
+        doc.text((date || '') + (loc ? '  ' + loc : ''), pageWidth - margin, y, { align: 'right' });
+        y += lineHeight - 1;
+        doc.setFont('helvetica', 'normal');
+        doc.text(title || '', margin, y);
+        y += lineHeight + 2;
+        doc.setFontSize(9);
+        doc.setTextColor(55, 55, 55);
+        const descLines = doc.splitTextToSize(stripHtml(desc || ''), maxWidth);
+        descLines.forEach((l) => { if (y > maxYLine) return; doc.text(l, margin, y); y += lineHeight - 0.5; });
+        (bullets || []).filter(Boolean).forEach((b) => {
+          if (y > maxYLine) return;
+          doc.text(stripHtml(b), margin + 4, y);
+          y += lineHeight - 0.5;
+        });
+        y += 4;
+      };
+      addWorkEntry16(company1temp16, post1temp16, date1temp16, location1temp16, workdesc1temp16, workdone1temp16);
+      addWorkEntry16(company2temp16, post2temp16, date2temp16, location2temp16, workdesc2temp16, workdone2temp16);
+      if (y > maxYSection) { doc.addPage(); y = 20; }
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.2);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 4;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      const eduSpaced = (educationlabeltemp16 || 'EDUCATION').split('').join(' ');
+      doc.text(eduSpaced.toUpperCase(), centerX, y, { align: 'center' });
+      y += 4;
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(universitytemp16 || '', margin, y);
+      doc.text((year16temp16 || '') + (location16temp16 ? '  ' + location16temp16 : ''), pageWidth - margin, y, { align: 'right' });
+      y += lineHeight;
+      doc.setFont('helvetica', 'normal');
+      doc.text(facultytemp16 || '', margin, y);
     } else {
       const fallback = enhancedResume || 'CV content - fill in the template and download.';
       addSection(null, fallback);
@@ -2416,64 +4116,66 @@ const Fill_cv = () => {
   //states for the temp 11
   //states for the temp 11
 
-  const [nametemp11, setNametemp11] = useState("Emily Johnson");
-  const [professiontemp11, setProfessiontemp11] = useState(
-    "Digital Marketing Specialist"
-  );
-  const [emailtemp11, setEmailtemp11] = useState(
-    "emily.johnson@example.com | (555) 55"
-  );
-  const [summarytemp11, setSummarytemp11] = useState("Summary");
-  const [summaryinfotemp11, setSummaryinfotemp11] = useState(
-    "Dynamic marketing professional with 6+ years of experience in digital campaigns, SEO, and content creation. Adept at leading cross-functional teams to deliver high-impact projects."
-  );
-  const [experiencetemp11, setExperiencetemp11] = useState("Experience");
-  const [post1temp11, setPost1temp11] = useState(
-    "Senior Digital Marketing Manager"
-  );
-  const [company1temp11, setCompany1temp11] = useState(
-    "XYZ Marketing Solutions"
-  );
+  // Template 11 - Ryland Mayfield style: two-column, gold border, serif
+  const [nametemp11, setNametemp11] = useState("RYLAND MAYFIELD");
+  const [professiontemp11, setProfessiontemp11] = useState("IT Manager");
+  const [emailtemp11, setEmailtemp11] = useState("ryland.mayfield@email.com");
+  const [phonetemp11, setPhonetemp11] = useState("(555) 123-4567");
+  const [locationtemp11, setLocationtemp11] = useState("Miami, FL");
+  const [linkedintemp11, setLinkedintemp11] = useState("linkedin.com/in/rylandmayfield");
+  const [summarytemp11, setSummarytemp11] = useState("Summary"); // label, kept for PDF fallback
+  const [summaryinfotemp11, setSummaryinfotemp11] = useState(""); // kept for auto-populate
+  const [experiencetemp11, setExperiencetemp11] = useState("WORK EXPERIENCE");
+  const [date1temp11, setDate1temp11] = useState("August 2025 - Current");
+  const [post1temp11, setPost1temp11] = useState("IT Manager");
+  const [company1temp11, setCompany1temp11] = useState("Halcyon Financial Technology");
   const [workdone1temp11, setWorkdone1temp11] = useState([
-    "- Led a team of 10 to develop and implement comprehensive marketing strategies.",
-    "- Increased online sales by 30% through targeted campaigns",
-    "- Managed a $500k annual marketing budget.",
+    "Led IT infrastructure and team management.",
+    "Implemented security best practices across the organization.",
   ]);
-
   const handleworkdone1temp11Change = (index, value) => {
-    const newworkdone1temp11 = [...workdone1temp11];
-    newworkdone1temp11[index] = value;
-    setWorkdone1temp11(newworkdone1temp11);
+    const arr = [...workdone1temp11];
+    arr[index] = value;
+    setWorkdone1temp11(arr);
   };
-
-  const [post2temp11, setPost2temp11] = useState(
-    "Digital Marketing Specialist"
-  );
-  const [company2temp11, setCompany2temp11] = useState("ABC Tech");
+  const [date2temp11, setDate2temp11] = useState("March 2023 - July 2025");
+  const [post2temp11, setPost2temp11] = useState("Systems Administrator");
+  const [company2temp11, setCompany2temp11] = useState("Acordis International");
   const [workdone2temp11, setworkdone2temp11] = useState([
-    "- Optimized SEO for a website with 1 million monthly visitors.",
-    "- Developed content strategies that increased engagement by 40%.",
-    "- Collaborated with the sales team to align marketing strategies.",
+    "Managed enterprise systems and endpoints.",
+    "Improved system reliability and performance.",
   ]);
-
   const handleworkdone2temp11Change = (index, value) => {
-    const newworkdone2temp11 = [...workdone2temp11];
-    newworkdone2temp11[index] = value;
-    setworkdone2temp11(newworkdone2temp11);
+    const arr = [...workdone2temp11];
+    arr[index] = value;
+    setworkdone2temp11(arr);
   };
-
-  const [educationtemp11, seteducationtemp11] = useState("Education");
-  const [facultytemp11, setFacultytemp11] = useState(
-    "Bachelor of Science in Marketing"
-  );
-  const [universitytemp11, setUniversitytemp11] = useState("State University");
-  const [datetemp11, setDatetemp11] = useState("09/2008 - 06/2012");
-  const [skilllabelstemp11, setSkillslabeltemp11] = useState("Skills");
+  const [date3temp11, setDate3temp11] = useState("July 2022 - February 2023");
+  const [post3temp11, setPost3temp11] = useState("IT Support Specialist");
+  const [company3temp11, setCompany3temp11] = useState("Virtuworks");
+  const [workdone3temp11, setWorkdone3temp11] = useState([
+    "Provided technical support to end users.",
+    "Resolved hardware and software issues.",
+  ]);
+  const handleworkdone3temp11Change = (index, value) => {
+    const arr = [...workdone3temp11];
+    arr[index] = value;
+    setWorkdone3temp11(arr);
+  };
+  const [educationtemp11, seteducationtemp11] = useState("EDUCATION");
+  const [facultytemp11, setFacultytemp11] = useState("Bachelor of Science Information Technology");
+  const [universitytemp11, setUniversitytemp11] = useState("Florida State University (2017 - 2021), Tallahassee, FL");
+  const [datetemp11, setDatetemp11] = useState("");
+  const [skilllabelstemp11, setSkillslabeltemp11] = useState("SKILLS");
   const [skillstemp11, setSkillstemp11] = useState([
-    "SEO & SEM",
-    "Google Analytics",
-    "Content Marketing",
-    "Email Campaigns",
+    "Jamf Pro",
+    "Power BI",
+    "ManageEngine Endpoint Central",
+    "SentinelOne",
+    "NinjaOne",
+    "Rubrik",
+    "Vendor negotiation",
+    "Escalation ownership",
   ]);
   const handleskillstemp11Change = (index, value) => {
     const newskillstemp11 = [...skillstemp11];
@@ -2481,14 +4183,7 @@ const Fill_cv = () => {
     setSkillstemp11(newskillstemp11);
   };
 
-  // Auto-expand summary textarea (Template 11) - must be after summaryinfotemp11 declaration
-  useEffect(() => {
-    const el = summaryTemp11Ref.current;
-    if (el) {
-      el.style.height = 'auto';
-      el.style.height = Math.max(el.scrollHeight, 80) + 'px';
-    }
-  }, [summaryinfotemp11]);
+  // Template 11 no longer has summary textarea - ref kept for compatibility
 
   //end of states for the temp11
 
@@ -2609,119 +4304,243 @@ const Fill_cv = () => {
     };
   
 
-  const [nametemp12, setNametemp12] = useState("John Doe");
-  const [professiontemp12, setProfessiontemp12] = useState("Software Engineer");
-  const [emailtemp12, setEmailtemp12] = useState("Email: john.doe@example.com");
-  const [phonetemp12, setPhonetemp12] = useState("Phone: (555) 555-5555");
-  const [websitetemp12, setwebsitetemp12] = useState(
-    "Website: www.johndoe.com"
+  // Template 12 - Two-column: main left (name, summary, experience) + sidebar right (contact, skills, education, other)
+  const [nametemp12, setNametemp12] = useState("First Last");
+  const [professiontemp12, setProfessiontemp12] = useState("Technology VP Sales Professional");
+  const [summaryinfotemp12, setSummaryinfotemp12] = useState(
+    "Results-driven technology sales leader with 15+ years of experience driving revenue growth and building high-performance teams. Expert in enterprise software solutions and strategic partnerships."
   );
-  // const [] = useState("");
-  const [profiletemp12, setProfiletemp12] = useState("Profile");
-  const [profileinfotemp12, setProfileinfotemp12] = useState(
-    "Experienced software engineer with a strong background in developing scalable web applications. Expertise in JavaScript, Python, and cloud services."
-  );
-  const [educationtemp12, setEducationtemp12] = useState("Education");
-  const [facultytemp12, setFacultytemp12] = useState(
-    "Bachelor in Computer Science"
-  );
-  const [universitytemp12, setUniversitytemp12] = useState("State University");
-  const [datetemp12, setDatetemp12] = useState("09/2010 - 06/2014");
-  const [experiencetemp12, setExperiencetemp12] = useState("Experience");
-  const [post1temp12, setPost1temp12] = useState("Senior Software Engineer");
-  const [company1temp12, setCompany1temp12] = useState("Tech Solutions");
+  const [experiencetemp12, setExperiencetemp12] = useState("WORK EXPERIENCE");
+  const [date1temp12, setDate1temp12] = useState("November 2015 – Present");
+  const [post1temp12, setPost1temp12] = useState("VP of Sales");
+  const [company1temp12, setCompany1temp12] = useState("Resume Worded, New York, NY");
   const [workdone1temp12, setWorkdone1temp12] = useState([
-    "- Led the development of a scalable e-commerce platform.",
-    "- Integrated RESTful APIs and third-party services.",
-    "- Mentored junior developers and conducted code reviews.",
+    "Led sales strategy and team of 25 across North America.",
+    "Exceeded annual targets by 40% for three consecutive years.",
+    "Built strategic partnerships with Fortune 500 clients.",
   ]);
   const handleworkdone1temp12Change = (index, value) => {
-    const newworkdone1temp12 = [...workdone1temp12];
-    newworkdone1temp12[index] = value;
-    setWorkdone1temp12(workdone1temp12);
+    const arr = [...workdone1temp12];
+    arr[index] = value;
+    setWorkdone1temp12(arr);
   };
-  const [post2temp12, setPost2temp12] = useState("Software Engineer");
-  const [company2temp12, setCompany2temp12] = useState("Innovatech");
+  const [date2temp12, setDate2temp12] = useState("March 2012 – October 2015");
+  const [post2temp12, setPost2temp12] = useState("Director of Sales");
+  const [company2temp12, setCompany2temp12] = useState("Tech Solutions Inc, San Francisco, CA");
   const [workdone2temp12, setWorkdone2temp12] = useState([
-    "- Developed and maintained web applications using React and Node.js.",
-    "- Collaborated with cross-functional teams to deliver projects on time.",
-    "- Optimized applications for maximum speed and scalability.",
+    "Grew regional revenue from $2M to $8M annually.",
+    "Developed and implemented new sales methodologies.",
   ]);
   const handleworkdone2temp12Change = (index, value) => {
-    const newworkdone2temp12 = [...workdone2temp12];
-    newworkdone2temp12[index] = value;
-    setWorkdone2temp12(workdone2temp12);
+    const arr = [...workdone2temp12];
+    arr[index] = value;
+    setWorkdone2temp12(arr);
   };
+  const [locationtemp12, setLocationtemp12] = useState("New York, NY");
+  const [phonetemp12, setPhonetemp12] = useState("(555) 123-4567");
+  const [emailtemp12, setEmailtemp12] = useState("first.last@email.com");
+  const [linkedintemp12, setLinkedintemp12] = useState("linkedin.com/in/firstlast");
+  const [githublinktemp12, setGithublinktemp12] = useState("github.com/firstlast");
+  const [skillstemp12, setSkillstemp12] = useState([
+    "Enterprise Sales",
+    "Team Leadership",
+    "Strategic Planning",
+    "CRM",
+    "Salesforce",
+    "Negotiation",
+  ]);
+  const handleSkillstemp12Change = (i, v) => { const s = [...skillstemp12]; s[i] = v; setSkillstemp12(s); };
+  const [educationtemp12, setEducationtemp12] = useState("EDUCATION");
+  const [facultytemp12, setFacultytemp12] = useState("MBA, Business Administration");
+  const [universitytemp12, setUniversitytemp12] = useState("Stanford University, Stanford, CA (2010 – 2012)");
+  const [awardstemp12, setAwardstemp12] = useState("Dean's List, Beta Gamma Sigma");
+  const [othertemp12, setOthertemp12] = useState("OTHER");
+  const [certificationstemp12, setCertificationstemp12] = useState([
+    "Certified Sales Professional (CSP)",
+    "AWS Certified Solutions Architect",
+  ]);
+  const handleCertificationstemp12Change = (i, v) => { const c = [...certificationstemp12]; c[i] = v; setCertificationstemp12(c); };
 
-  // Template 13 - ATS-Optimized (simple single column)
-  const [nametemp13, setNametemp13] = useState("Your Name");
-  const [professiontemp13, setProfessiontemp13] = useState("Professional Title");
-  const [summarytemp13, setSummarytemp13] = useState("Brief professional summary...");
-  const [skillstemp13, setSkillstemp13] = useState(["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"]);
-  const handleSkillstemp13Change = (i, v) => { const s = [...skillstemp13]; s[i] = v; setSkillstemp13(s); };
-  const [post1temp13, setPost1temp13] = useState("Job Title");
-  const [company1temp13, setCompany1temp13] = useState("Company Name");
-  const [workdone1temp13, setWorkdone1temp13] = useState(["Achievement 1", "Achievement 2", "Achievement 3"]);
+  // Template 13 - Chloe Martinez two-column (left white, right blue sidebar)
+  const [nametemp13, setNametemp13] = useState("Chloe Martinez");
+  const [professiontemp13, setProfessiontemp13] = useState("Senior Full Stack Developer | Cloud Solutions Expert");
+  const [emailtemp13, setEmailtemp13] = useState("help@enhancv.com");
+  const [linkedintemp13, setLinkedintemp13] = useState("linkedin.com/in/chloemartinez");
+  const [locationtemp13, setLocationtemp13] = useState("Seattle, Washington");
+  const [summarytemp13, setSummarytemp13] = useState("Results-driven full stack developer with 8+ years of experience building scalable cloud solutions. Expert in AWS, Angular, and Node.js.");
+  const [post1temp13, setPost1temp13] = useState("Senior Full Stack Developer");
+  const [date1temp13, setDate1temp13] = useState("01/2019 - Present");
+  const [company1temp13, setCompany1temp13] = useState("Tech Solutions Inc");
+  const [location1temp13, setLocation1temp13] = useState("Seattle, WA");
+  const [workdone1temp13, setWorkdone1temp13] = useState([
+    "Led migration of legacy systems to AWS, reducing costs by 40%.",
+    "Built microservices architecture serving 2M+ daily users.",
+    "Mentored team of 5 junior developers.",
+  ]);
   const handleWorkdone1temp13Change = (i, v) => { const w = [...workdone1temp13]; w[i] = v; setWorkdone1temp13(w); };
-  const [facultytemp13, setFacultytemp13] = useState("Degree");
-  const [universitytemp13, setUniversitytemp13] = useState("University");
-  const [datetemp13, setDatetemp13] = useState("Graduation Date");
+  const [post2temp13, setPost2temp13] = useState("Full Stack Developer");
+  const [date2temp13, setDate2temp13] = useState("06/2016 - 12/2018");
+  const [company2temp13, setCompany2temp13] = useState("StartupXYZ");
+  const [location2temp13, setLocation2temp13] = useState("Remote");
+  const [workdone2temp13, setWorkdone2temp13] = useState([
+    "Developed REST APIs and React frontends.",
+    "Collaborated with product team on feature delivery.",
+  ]);
+  const handleWorkdone2temp13Change = (i, v) => { const w = [...workdone2temp13]; w[i] = v; setWorkdone2temp13(w); };
+  const [facultytemp13, setFacultytemp13] = useState("B.S. Computer Science");
+  const [dateedutemp13, setDateedutemp13] = useState("2012 - 2016");
+  const [universitytemp13, setUniversitytemp13] = useState("University of Washington");
+  const [locationedutemp13, setLocationedutemp13] = useState("Seattle, WA");
+  const [languagestemp13, setLanguagestemp13] = useState([
+    { name: "English", level: "Native", dots: 5 },
+    { name: "Spanish", level: "Advanced", dots: 4 },
+  ]);
+  const handleLanguagetemp13Change = (i, field, v) => { const l = [...languagestemp13]; l[i] = { ...l[i], [field]: field === 'dots' ? parseInt(v, 10) || 0 : v }; setLanguagestemp13(l); };
+  const [achievementstemp13, setAchievementstemp13] = useState([
+    { title: "AWS Certified Solutions Architect", desc: "Professional certification" },
+    { title: "Tech Lead of the Year", desc: "Internal award 2022" },
+  ]);
+  const handleAchievementtemp13Change = (i, field, v) => { const a = [...achievementstemp13]; a[i] = { ...a[i], [field]: v }; setAchievementstemp13(a); };
+  const [skillstemp13, setSkillstemp13] = useState(["AWS Cloud Services", "Angular & Node.js", "React", "Python", "Docker", "Kubernetes"]);
+  const handleSkillstemp13Change = (i, v) => { const s = [...skillstemp13]; s[i] = v; setSkillstemp13(s); };
+  const [projectstemp13, setProjectstemp13] = useState([
+    { title: "Cloud Migration Tool", desc: "Automated migration scripts for AWS.", link: "github.com/chloe/cloud-migrate" },
+    { title: "Real-time Dashboard", desc: "Angular app with WebSocket updates.", link: "github.com/chloe/dashboard" },
+  ]);
+  const handleProjecttemp13Change = (i, field, v) => { const p = [...projectstemp13]; p[i] = { ...p[i], [field]: v }; setProjectstemp13(p); };
+  const [certificationstemp13, setCertificationstemp13] = useState([
+    { title: "AWS Solutions Architect", issuer: "Amazon Web Services" },
+  ]);
+  const handleCertificationtemp13Change = (i, field, v) => { const c = [...certificationstemp13]; c[i] = { ...c[i], [field]: v }; setCertificationstemp13(c); };
+  const [passionstemp13, setPassionstemp13] = useState([
+    { title: "Open Source", desc: "Contributor to Node.js and Angular" },
+    { title: "Mentorship", desc: "Tech community workshops" },
+  ]);
+  const handlePassiontemp13Change = (i, field, v) => { const p = [...passionstemp13]; p[i] = { ...p[i], [field]: v }; setPassionstemp13(p); };
+  const [datetemp13, setDatetemp13] = useState(""); // legacy, use dateedutemp13
 
-  // Template 14 - Tech Developer (dark sidebar)
-  const [nametemp14, setNametemp14] = useState("Your Name");
-  const [professiontemp14, setProfessiontemp14] = useState("Software Developer");
-  const [contacttemp14, setContacttemp14] = useState("Email | Phone | Location");
-  const [skillstemp14, setSkillstemp14] = useState(["JavaScript", "React", "Node.js", "Python"]);
-  const handleSkillstemp14Change = (i, v) => { const s = [...skillstemp14]; s[i] = v; setSkillstemp14(s); };
-  const [post1temp14, setPost1temp14] = useState("Senior Developer");
-  const [company1temp14, setCompany1temp14] = useState("Tech Corp");
-  const [workdone1temp14, setWorkdone1temp14] = useState(["Built scalable systems", "Led team initiatives"]);
+  // Template 14 - Solomon Farley (single-column, black/white, red accent)
+  const [firstnametemp14, setFirstnametemp14] = useState("SOLOMON");
+  const [lastnametemp14, setLastnametemp14] = useState("FARLEY");
+  const [locationtemp14, setLocationtemp14] = useState("Washington, DC 20005");
+  const [phonetemp14, setPhonetemp14] = useState("555-555-5555");
+  const [emailtemp14, setEmailtemp14] = useState("example@example.com");
+  const [summarytemp14, setSummarytemp14] = useState("Experienced professional with a strong background in litigation and dispute resolution. Skilled in arbitration, oral debate, and legal research.");
+  const [post1temp14, setPost1temp14] = useState("Senior Associate");
+  const [date1temp14, setDate1temp14] = useState("01/2019 to Current");
+  const [company1temp14, setCompany1temp14] = useState("Law Firm Name");
+  const [workdone1temp14, setWorkdone1temp14] = useState(["Led arbitration proceedings", "Conducted legal research", "Prepared litigation documents", "", ""]);
   const handleWorkdone1temp14Change = (i, v) => { const w = [...workdone1temp14]; w[i] = v; setWorkdone1temp14(w); };
-  const [facultytemp14, setFacultytemp14] = useState("B.S. Computer Science");
-  const [universitytemp14, setUniversitytemp14] = useState("University");
+  const [post2temp14, setPost2temp14] = useState("Associate Attorney");
+  const [date2temp14, setDate2temp14] = useState("06/2016 to 12/2018");
+  const [company2temp14, setCompany2temp14] = useState("Previous Law Firm");
+  const [workdone2temp14, setWorkdone2temp14] = useState(["Supported senior attorneys", "Drafted motions and briefs", "", "", ""]);
+  const handleWorkdone2temp14Change = (i, v) => { const w = [...workdone2temp14]; w[i] = v; setWorkdone2temp14(w); };
+  const [skillstemp14, setSkillstemp14] = useState(["Arbitration and litigation", "Oral debate", "Legal research", "Contract negotiation", "Client relations", "Case management", "Case interpretation", "Legal documentation"]);
+  const handleSkillstemp14Change = (i, v) => { const s = [...skillstemp14]; s[i] = v; setSkillstemp14(s); };
+  const [post3temp14, setPost3temp14] = useState("");
+  const [date3temp14, setDate3temp14] = useState("");
+  const [company3temp14, setCompany3temp14] = useState("");
+  const [workdone3temp14, setWorkdone3temp14] = useState(["", "", ""]);
+  const handleWorkdone3temp14Change = (i, v) => { const w = [...workdone3temp14]; w[i] = v; setWorkdone3temp14(w); };
+  const [facultytemp14, setFacultytemp14] = useState("J.D.");
+  const [universitytemp14, setUniversitytemp14] = useState("Georgetown University - Washington, DC");
+  const [faculty2temp14, setFaculty2temp14] = useState("");
+  const [university2temp14, setUniversity2temp14] = useState("");
 
-  // Template 15 - Academic Scholar (single-column centered, matches preview)
-  const [nametemp15, setNametemp15] = useState("DR. ELEANOR S. VANCE");
-  const [subtitletemp15, setSubtitletemp15] = useState("ACADEMIC CURRICULUM VITAE");
-  const [phonetemp15, setPhonetemp15] = useState("Phone: (617) 555-0123");
-  const [emailtemp15, setEmailtemp15] = useState("Email: e.vance@university.edu");
-  const [webtemp15, setWebtemp15] = useState("Web: scholar.harvard.edu/evance");
-  const [addresstemp15, setAddresstemp15] = useState("Address: 21 23, Scholar, Harvard, TX 30233");
-  const [educationtemp15, setEducationtemp15] = useState([
-    "Ph.D. in Medieval History (2018-2023), Harvard University.",
-    "Dissertation: Hagiography & Power in 10th-Century Byzantium.",
-    "M.Phil. in Classical Studies (2016-2018), University of Oxford.",
-    "B.A. in History (2012-2016), Yale University (summa cum laude)."
+  // Template 15 - Roy J. Weatherspoon (clean single-column, light blue section headers)
+  const [nametemp15, setNametemp15] = useState("ROY J. WEATHERSPOON");
+  const [phonetemp15, setPhonetemp15] = useState("(555) 555-0123");
+  const [emailtemp15, setEmailtemp15] = useState("roy.weatherspoon@email.com");
+  const [locationtemp15, setLocationtemp15] = useState("City, State");
+  const [linkedintemp15, setLinkedintemp15] = useState("linkedin.com/in/royweatherspoon");
+  const [summarytemp15, setSummarytemp15] = useState("Experienced professional with a strong background in leadership and strategic planning. Proven track record of delivering results across diverse industries.");
+  const [post1temp15, setPost1temp15] = useState("Professional Title");
+  const [date1temp15, setDate1temp15] = useState("9/2023 – Present");
+  const [company1temp15, setCompany1temp15] = useState("Company Name");
+  const [location1temp15, setLocation1temp15] = useState("City, State");
+  const [workdone1temp15, setWorkdone1temp15] = useState(["Key responsibility or achievement", "Another accomplishment", "Third bullet point"]);
+  const handleWorkdone1temp15Change = (i, v) => { const w = [...workdone1temp15]; w[i] = v; setWorkdone1temp15(w); };
+  const [post2temp15, setPost2temp15] = useState("Previous Role");
+  const [date2temp15, setDate2temp15] = useState("6/2020 – 8/2023");
+  const [company2temp15, setCompany2temp15] = useState("Previous Company");
+  const [location2temp15, setLocation2temp15] = useState("City, State");
+  const [workdone2temp15, setWorkdone2temp15] = useState(["Responsibility or achievement", "Another point"]);
+  const handleWorkdone2temp15Change = (i, v) => { const w = [...workdone2temp15]; w[i] = v; setWorkdone2temp15(w); };
+  const [universitytemp15, setUniversitytemp15] = useState("University Name");
+  const [locationedutemp15, setLocationedutemp15] = useState("City, State");
+  const [dateedutemp15, setDateedutemp15] = useState("5/2022");
+  const [degreetemp15, setDegreetemp15] = useState("Bachelor of Science");
+  const [majortemp15, setMajortemp15] = useState("Major");
+  const [technicalSkillstemp15, setTechnicalSkillstemp15] = useState("Skill 1, Skill 2, Skill 3");
+  const [softSkillstemp15, setSoftSkillstemp15] = useState("Leadership, Communication, Problem-solving");
+  const [languagesTemp15, setLanguagesTemp15] = useState("English, Spanish");
+
+  // Template 16 - Professional Clean (Ronnie Romero style: single-column, centered name, contact bar, full-width profile)
+  const [nametemp16, setNametemp16] = useState("RONNIE ROMERO");
+  const [locationtemp16, setLocationtemp16] = useState("Sydney");
+  const [phonetemp16, setPhonetemp16] = useState("(555) 123-4567");
+  const [emailtemp16, setEmailtemp16] = useState("ronnie.romero@email.com");
+  const [linkedintemp16, setLinkedintemp16] = useState("linkedin.com/in/ronnieromero");
+  const [profilelabeltemp16, setProfilelabeltemp16] = useState("PROFESSIONAL PROFILE");
+  const [profiletemp16, setProfiletemp16] = useState("Experienced professional with a strong background in project management and team leadership. Proven track record of delivering high-impact results across diverse industries. Skilled in strategic planning, stakeholder engagement, and driving operational excellence.");
+  const [skillslabeltemp16, setSkillslabeltemp16] = useState("SKILLS");
+  const [skillstemp16, setSkillstemp16] = useState([
+    "Engineering Assistance & Support", "Project Budget / Cost Planning", "Key Relationships Building",
+    "Project Planning and Scheduling", "Technical Documentation", "Quality Assurance",
+    "Process Improvement", "Cross-functional Collaboration", "Risk Management"
   ]);
-  const handleEducationtemp15Change = (i, v) => { const e = [...educationtemp15]; e[i] = v; setEducationtemp15(e); };
-  const [researchfocustemp15, setResearchfocustemp15] = useState("Late Antiquity, Byzantine Literature, Manuscript Studies, Digital Humanities.");
-  const [publicationstemp15, setPublicationstemp15] = useState([
-    "Vance, E.S. The Sacred Text: Faith & Politics in Byzantium (Cambridge Univ. Press, 2024).",
-    "\"Hagiographical Narratives...\", Speculum (2023).",
-    "\"The Evolving Cult of St. Demetrios...\", Journal of Byzantine Studies (2021)."
+  const handelskillstemp16 = (i, v) => { const s = [...skillstemp16]; s[i] = v; setSkillstemp16(s); };
+  const [worklabeltemp16, setWorklabeltemp16] = useState("WORK EXPERIENCE");
+  const [company1temp16, setCompany1temp16] = useState("Georgiou Group");
+  const [post1temp16, setPost1temp16] = useState("Senior Project Manager");
+  const [date1temp16, setDate1temp16] = useState("2019 – Present");
+  const [location1temp16, setLocation1temp16] = useState("Sydney");
+  const [workdesc1temp16, setWorkdesc1temp16] = useState("Lead cross-functional teams to deliver complex engineering projects on time and within budget.");
+  const [workdone1temp16, setWorkdone1temp16] = useState([
+    "Managed projects valued at $2M+ annually.",
+    "Improved process efficiency by 25% through lean methodologies.",
+    "Mentored junior project managers and analysts."
   ]);
-  const handlePublicationstemp15Change = (i, v) => { const p = [...publicationstemp15]; p[i] = v; setPublicationstemp15(p); };
-  const [awardstemp15, setAwardstemp15] = useState(["Fulbright Scholar (2022).", "Getty Research Grant (2020)."]);
-  const handleAwardstemp15Change = (i, v) => { const a = [...awardstemp15]; a[i] = v; setAwardstemp15(a); };
-  const [presentationstemp15, setPresentationstemp15] = useState([
-    "\"Hagiography in Context\", International Medieval Congress, Leeds, 2022.",
-    "\"Byzantine Manuscripts\", Dumbarton Oaks Symposium, 2021."
+  const handleworkdone1temp16 = (i, v) => { const w = [...workdone1temp16]; w[i] = v; setWorkdone1temp16(w); };
+  const [company2temp16, setCompany2temp16] = useState("Ventia Boral Amey Joint Venture");
+  const [post2temp16, setPost2temp16] = useState("Project Coordinator");
+  const [date2temp16, setDate2temp16] = useState("2016 – 2019");
+  const [location2temp16, setLocation2temp16] = useState("Sydney");
+  const [workdesc2temp16, setWorkdesc2temp16] = useState("Supported project delivery and client communications.");
+  const [workdone2temp16, setWorkdone2temp16] = useState([
+    "Coordinated schedules across 5 concurrent projects.",
+    "Prepared status reports and presentations for stakeholders."
   ]);
-  const handlePresentationstemp15Change = (i, v) => { const p = [...presentationstemp15]; p[i] = v; setPresentationstemp15(p); };
-  const [teachingtemp15, setTeachingtemp15] = useState(["Teaching Assistant", "Harvard University", "2020-2022"]);
+  const handleworkdone2temp16 = (i, v) => { const w = [...workdone2temp16]; w[i] = v; setWorkdone2temp16(w); };
+  const [educationlabeltemp16, setEducationlabeltemp16] = useState("EDUCATION");
+  const [universitytemp16, setUniversitytemp16] = useState("University of Sydney");
+  const [facultytemp16, setFacultytemp16] = useState("B.S. Industrial Engineering");
+  const [year16temp16, setYear16temp16] = useState("2016");
+  const [location16temp16, setLocation16temp16] = useState("Sydney");
 
   //end of the states
 
   const renderTemplate = () => {
     switch (templateId) {
-      case 1:
-        const T1Bar = ({ children }) => <div className="bg-gray-600 px-3 py-1.5 text-white text-xs font-bold italic uppercase tracking-wider">{children}</div>;
-        const T1BarWhite = ({ children }) => <div className="bg-white px-3 py-1.5 text-black text-xs font-bold italic uppercase tracking-wider">{children}</div>;
+      case 1: {
+        // Gray sidebar bars: left-aligned text, vertically centered in the bar
+        const t1BarGray =
+          'px-3 py-2 text-xs font-bold italic uppercase tracking-wider flex items-center justify-start text-left min-h-[2.5rem] leading-normal';
+        // White section bars: text vertically in the middle of the white strip (not horizontal “page” centre)
+        const t1BarWhiteCls =
+          'w-full px-3 py-2.5 text-xs font-bold italic uppercase tracking-wider flex items-center justify-start text-left min-h-[3rem] leading-normal';
+        const T1Bar = ({ children, className = '' }) => (
+          <div className={`bg-gray-600 text-white ${t1BarGray} ${className}`.trim()}>{children}</div>
+        );
+        const T1BarWhite = ({ children, className = '' }) => (
+          <div className={`bg-white text-black ${t1BarWhiteCls} ${className}`.trim()}>{children}</div>
+        );
         return (
-          <div className="w-full max-w-3xl mx-auto overflow-hidden font-sans bg-black" style={{ height: "1100px" }}>
-            <div className="flex h-full">
+          <div data-template1 className="w-full max-w-[900px] mx-auto font-sans bg-black min-h-[1273px] overflow-auto max-[520px]:min-h-[1100px]">
+            <div className="flex min-h-[1273px] w-full min-w-0 max-[520px]:min-h-[1100px] items-stretch">
               {/* Left Column - Black */}
-              <div className="w-[35%] bg-black p-6 text-white">
+              <div className="w-[35%] bg-black p-6 text-white flex-shrink-0 overflow-visible self-stretch">
                 <div className="flex justify-center mb-6">
                   <div className="w-28 h-28 rounded border-2 border-gray-500 overflow-hidden cursor-pointer" onClick={() => document.getElementById("imgInput1").click()}>
                     <img src={selectedImage1 || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='112' height='112' viewBox='0 0 112 112'%3E%3Crect fill='%23374151' width='112' height='112'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='12'%3EPhoto%3C/text%3E%3C/svg%3E"} alt="Profile" className="w-full h-full object-cover" />
@@ -2729,17 +4548,19 @@ const Fill_cv = () => {
                   <input id="imgInput1" type="file" accept="image/*" onChange={handleImageChange1} className="hidden" />
                 </div>
                 <T1Bar>About Me</T1Bar>
-                <textarea value={brief} onChange={(e) => setBrief(e.target.value)} className="w-full bg-transparent text-white text-xs mt-2 resize-none italic" rows={4} placeholder="Brief about yourself..." />
-                <T1Bar className="mt-6">Skills</T1Bar>
-                <ul className="mt-2 space-y-1">
+                <div className="mt-2 mb-4">
+                  <textarea value={brief} onChange={(e) => setBrief(e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 60)} className="w-full bg-transparent text-white text-xs resize-y italic min-h-[120px] max-h-[450px] overflow-y-auto block py-1 leading-relaxed hyphens-none" rows={12} placeholder="Brief about yourself..." style={{ wordBreak: 'normal', overflowWrap: 'break-word' }} />
+                </div>
+                <T1Bar className="mt-4">Skills</T1Bar>
+                <ul className="mt-2 space-y-2 mb-4">
                   {skills.map((s, i) => (
-                    <li key={i} className="flex items-center gap-2 text-xs">
-                      <span className="text-white">-</span>
-                      <input type="text" value={s} onChange={(e) => handleSkillChange(i, e.target.value)} className="bg-transparent flex-1 text-white placeholder-white/50" />
+                    <li key={i} className="flex gap-2 text-xs w-full items-start">
+                      <span className="text-white flex-shrink-0 pt-1">-</span>
+                      <textarea value={s} onChange={(e) => handleSkillChange(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} rows={2} className="bg-transparent flex-1 min-w-0 text-white placeholder-white/50 py-0.5 resize-none overflow-y-auto min-h-[36px] max-h-[72px] w-full hyphens-none" style={{ wordBreak: 'normal', overflowWrap: 'break-word' }} />
                     </li>
                   ))}
                 </ul>
-                <T1Bar className="mt-6">Contact</T1Bar>
+                <T1Bar className="mt-4">Contact</T1Bar>
                 <div className="mt-2 space-y-2 text-xs">
                   <div className="flex items-center gap-2">
                     <span className="w-4 h-4 rounded-full bg-white flex-shrink-0" style={{ minWidth: 16, minHeight: 16 }} />
@@ -2757,30 +4578,30 @@ const Fill_cv = () => {
               </div>
 
               {/* Right Column - Dark grey curved shape (smooth circle portion) */}
-              <div className="w-[65%] relative overflow-hidden">
+              <div className="w-[65%] relative overflow-visible flex-shrink-0 self-stretch min-h-0">
                 <div className="absolute inset-0" style={{ backgroundColor: "#374151", clipPath: "circle(85% at 100% 50%)" }} />
-                <div className="relative z-10 p-8">
+                <div className="relative z-10 p-8 overflow-visible">
                   <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="text-3xl font-bold italic bg-transparent text-white uppercase tracking-wider w-full placeholder-white/70" placeholder="YOUR NAME" />
                   <input type="text" value={profession} onChange={(e) => setProfession(e.target.value)} className="text-base italic bg-transparent text-white/90 mt-1 w-full placeholder-white/70" placeholder="Freelance Software Developer" />
-                  <div className="mt-8 space-y-6">
+                  <div className="mt-8 space-y-6 overflow-visible">
                     <div>
                       <T1BarWhite>Experience</T1BarWhite>
                       <div className="mt-2 text-white text-sm space-y-3">
                         <div>
                           <input type="text" value={title1} onChange={(e) => setTitle1(e.target.value)} className="font-semibold bg-transparent w-full text-white placeholder-white/70" placeholder="Job Title" />
                           <input type="text" value={company1} onChange={(e) => setCompany1(e.target.value)} className="bg-transparent w-full text-white/90 text-xs placeholder-white/60" placeholder="Company (Year-Year)" />
-                          <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                          <ul className="list-none pl-4 mt-1 space-y-1">
                             {responsibilities1.map((r, i) => (
-                              <li key={i}><input type="text" value={r} onChange={(e) => handleResponsibilitiesChange1(i, e.target.value)} className="bg-transparent w-full text-white/90 text-xs" /></li>
+                              <li key={i}><textarea value={r} onChange={(e) => handleResponsibilitiesChange1(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} rows={2} className="bg-transparent w-full text-white/90 text-xs resize-none min-h-[24px] overflow-y-auto py-0 hyphens-none" style={{ wordBreak: 'normal', overflowWrap: 'break-word' }} /></li>
                             ))}
                           </ul>
                         </div>
                         <div>
                           <input type="text" value={title2} onChange={(e) => setTitle2(e.target.value)} className="font-semibold bg-transparent w-full text-white placeholder-white/70" placeholder="Job Title 2" />
                           <input type="text" value={company2} onChange={(e) => setCompany2(e.target.value)} className="bg-transparent w-full text-white/90 text-xs placeholder-white/60" placeholder="Company (Year-Year)" />
-                          <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                          <ul className="list-none pl-4 mt-1 space-y-1">
                             {responsibilities2.map((r, i) => (
-                              <li key={i}><input type="text" value={r} onChange={(e) => handleResponsibilitiesChange2(i, e.target.value)} className="bg-transparent w-full text-white/90 text-xs" /></li>
+                              <li key={i}><textarea value={r} onChange={(e) => handleResponsibilitiesChange2(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} rows={2} className="bg-transparent w-full text-white/90 text-xs resize-none min-h-[24px] overflow-y-auto py-0 hyphens-none" style={{ wordBreak: 'normal', overflowWrap: 'break-word' }} /></li>
                             ))}
                           </ul>
                         </div>
@@ -2827,6 +4648,7 @@ const Fill_cv = () => {
             </div>
           </div>
         );
+      }
 
       case 2:
         const T2Gold = "text-amber-800";
@@ -2842,14 +4664,14 @@ const Fill_cv = () => {
             <div className="flex">
               <div className="w-1/3 p-6 space-y-6">
                 <div>
-                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2`}>CONTACT</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2 ${CV_SEC_H3}`}>CONTACT</h3>
                   <input type="text" value={addresstemp2} onChange={(e) => setAddresstemp2(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 mb-1 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
                   <input type="text" value={phonetemp2} onChange={(e) => setPhonetemp2(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
                   <input type="text" value={emailtemp2} onChange={(e) => setEmailtemp2(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
                   <input type="text" value={websitetemp2} onChange={(e) => setWebsitetemp2(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
                 </div>
                 <div>
-                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2`}>EDUCATION</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2 ${CV_SEC_H3}`}>EDUCATION</h3>
                   <input type="text" value={educationtemp2} onChange={(e) => setEducationtemp2(e.target.value)} className="text-sm font-semibold bg-transparent w-full text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
                   <input type="text" value={universitytemp2} onChange={(e) => setUniversitytemp2(e.target.value)} className="text-sm italic bg-transparent w-full text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
                   <input type="text" value={educationdetailtemp2} onChange={(e) => setEducationdetailtemp2(e.target.value)} className="text-sm bg-transparent w-full text-gray-600 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
@@ -2857,7 +4679,7 @@ const Fill_cv = () => {
                   <input type="text" value={university2temp2} onChange={(e) => setUniversity2temp2(e.target.value)} className="text-sm italic bg-transparent w-full text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" />
                 </div>
                 <div>
-                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2`}>KEY SKILLS</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2 ${CV_SEC_H3}`}>KEY SKILLS</h3>
                   <ul className="space-y-1">
                     {skillstemp2.map((s, i) => (
                       <li key={i}><input type="text" value={s} onChange={(e) => handleskillstemp2Change(i, e.target.value)} className="text-sm bg-transparent w-full text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" /></li>
@@ -2865,7 +4687,7 @@ const Fill_cv = () => {
                   </ul>
                 </div>
                 <div>
-                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2`}>INTERESTS</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2 ${CV_SEC_H3}`}>INTERESTS</h3>
                   <ul className="space-y-1">
                     {intereststemp2.map((x, i) => (
                       <li key={i}><input type="text" value={x} onChange={(e) => handleIntereststemp2Change(i, e.target.value)} className="text-sm bg-transparent w-full text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1" /></li>
@@ -2876,11 +4698,11 @@ const Fill_cv = () => {
               {T2Divider}
               <div className="flex-1 p-6 space-y-6">
                 <div>
-                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2`}>SUMMARY</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-2 ${CV_SEC_H3}`}>SUMMARY</h3>
                   <RichTextBlock value={profileinfotemp2} onChange={setProfileinfoTemp2} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded-md px-2 py-1.5" minHeight="80px" placeholder="Professional summary..." />
                 </div>
                 <div>
-                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-3`}>WORK EXPERIENCE</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider ${T2Gold} mb-3 ${CV_SEC_H3}`}>WORK EXPERIENCE</h3>
                   <div className="space-y-4">
                     <div>
                       <input type="text" value={post1temp2} onChange={(e) => setPost1temp2(e.target.value)} className={`text-sm font-bold uppercase ${T2Gold} bg-transparent w-full focus:outline-none focus:ring-2 focus:ring-amber-200/70 focus:ring-inset rounded px-2 py-1`} />
@@ -2964,17 +4786,17 @@ const Fill_cv = () => {
             <div className="flex">
               <div className="w-1/3 p-6 space-y-6">
                 <div>
-                  <h3 className="text-sm font-bold text-black border-b border-black pb-2 mb-2">Social Media</h3>
+                  <h3 className={`text-sm font-bold text-black border-b border-black mb-2 ${CV_SEC_H3}`}>Social Media</h3>
                   <input type="text" value={socialHandleTemp3} onChange={(e) => setSocialHandleTemp3(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 mb-1" />
                   <input type="text" value={websitetemp3} onChange={(e) => setWebsitetemp3(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 mb-1" />
                   <input type="text" value={emailtemp3} onChange={(e) => setEmailtemp3(e.target.value)} className="text-sm bg-transparent w-full text-gray-800" />
                 </div>
                 <div className="border-t border-gray-400 pt-4">
-                  <h3 className="text-sm font-bold text-black border-b border-black pb-2 mb-2">About</h3>
+                  <h3 className={`text-sm font-bold text-black border-b border-black mb-2 ${CV_SEC_H3}`}>About</h3>
                   <RichTextBlock value={abouttemp3} onChange={setAbouttemp3} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed" minHeight="60px" placeholder="About you..." />
                 </div>
                 <div className="border-t border-gray-400 pt-4">
-                  <h3 className="text-sm font-bold text-black border-b border-black pb-2 mb-2">Awards</h3>
+                  <h3 className={`text-sm font-bold text-black border-b border-black mb-2 ${CV_SEC_H3}`}>Awards</h3>
                   <div className="space-y-3">
                     {awardstemp3.map((a, i) => (
                       <div key={i} className="flex gap-3">
@@ -2987,7 +4809,7 @@ const Fill_cv = () => {
               </div>
               <div className="flex-1 p-6 space-y-6 border-l border-gray-300">
                 <div>
-                  <h3 className="text-sm font-bold text-black border-b border-black pb-2 mb-3">Work Experience</h3>
+                  <h3 className={`text-sm font-bold text-black border-b border-black mb-3 ${CV_SEC_H3}`}>Work Experience</h3>
                   <div className="space-y-4">
                     <div>
                       <input type="text" value={posttemp3} onChange={(e) => setPosttemp3(e.target.value)} className="text-sm font-bold bg-transparent w-full text-gray-900" placeholder="Project Manager (2017 - Present)" />
@@ -3000,7 +4822,7 @@ const Fill_cv = () => {
                   </div>
                 </div>
                 <div className="border-t-2 border-black pt-4">
-                  <h3 className="text-sm font-bold text-black border-b border-black pb-2 mb-3">Educational History</h3>
+                  <h3 className={`text-sm font-bold text-black border-b border-black mb-3 ${CV_SEC_H3}`}>Educational History</h3>
                   <div className="space-y-4">
                     <div>
                       <input type="text" value={edu1temp3} onChange={(e) => setEdu1temp3(e.target.value)} className="text-sm font-bold bg-transparent w-full text-gray-900" />
@@ -3040,13 +4862,13 @@ const Fill_cv = () => {
             <div className="flex">
               {/* Left Sidebar - Dark grey */}
               <div className="w-1/3 p-6 text-white" style={{ backgroundColor: sidebarBg4 }}>
-                <h3 className="text-xs font-bold uppercase tracking-wider mb-3">Personal Info</h3>
+                <h3 className={`text-xs font-bold uppercase tracking-wider mb-3 text-white ${CV_SEC_H3}`}>Personal Info</h3>
                 <input type="text" value={addresstemp4} onChange={(e) => setAddresstemp4(e.target.value)} className="text-sm bg-transparent w-full mb-2 placeholder-white/60" placeholder="Address" />
                 <input type="text" value={phonetemp4} onChange={(e) => setPhonetemp4(e.target.value)} className="text-sm bg-transparent w-full mb-2 placeholder-white/60" placeholder="Phone" />
                 <input type="text" value={emailtemp4} onChange={(e) => setEmailtemp4(e.target.value)} className="text-sm bg-transparent w-full mb-2 placeholder-white/60" placeholder="Email" />
                 <input type="text" value={linkedintemp4} onChange={(e) => setLinkedintemp4(e.target.value)} className="text-sm bg-transparent w-full underline placeholder-white/60" placeholder="LinkedIn" />
                 <div className="mt-6">
-                  <h3 className="text-xs font-bold uppercase tracking-wider mb-3">Skills</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider mb-3 text-white ${CV_SEC_H3}`}>Skills</h3>
                   <div className="space-y-2">
                     {skillstemp4.map((s, i) => (
                       <div key={i}>
@@ -3062,7 +4884,7 @@ const Fill_cv = () => {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <h3 className="text-xs font-bold uppercase tracking-wider mb-3">Languages</h3>
+                  <h3 className={`text-xs font-bold uppercase tracking-wider mb-3 text-white ${CV_SEC_H3}`}>Languages</h3>
                   <div className="space-y-2">
                     {languagesTemp4.map((lang, i) => (
                       <div key={i}>
@@ -3082,7 +4904,7 @@ const Fill_cv = () => {
               <div className="flex-1 p-8 bg-white">
                 <RichTextBlock value={summarytemp4} onChange={setSummarytemp4} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed mb-6 block" minHeight="50px" placeholder="Professional summary..." />
                 <div className="border-b-2 mb-4" style={{ borderColor: accentBlue4 }}>
-                  <h3 className="text-sm font-bold uppercase text-gray-900">Employment History</h3>
+                  <h3 className={`text-sm font-bold uppercase text-gray-900 ${CV_SEC_H3}`}>Employment History</h3>
                 </div>
                 <div className="space-y-4">
                   <div>
@@ -3109,14 +4931,14 @@ const Fill_cv = () => {
                   </div>
                 </div>
                 <div className="mt-8 border-b-2" style={{ borderColor: accentBlue4 }}>
-                  <h3 className="text-sm font-bold uppercase text-gray-900">Education</h3>
+                  <h3 className={`text-sm font-bold uppercase text-gray-900 ${CV_SEC_H3}`}>Education</h3>
                 </div>
                 <div className="mt-4">
                   <input type="text" value={facultytemp4} onChange={(e) => setFacultytemp4(e.target.value)} className="text-sm font-bold bg-transparent w-full text-gray-900" placeholder="Degree | Year" />
                   <input type="text" value={collegetemp4} onChange={(e) => setCollegetemp4(e.target.value)} className="text-sm bg-transparent w-full text-gray-700" placeholder="School" />
                 </div>
                 <div className="mt-8 border-b-2" style={{ borderColor: accentBlue4 }}>
-                  <h3 className="text-sm font-bold uppercase text-gray-900">Certifications</h3>
+                  <h3 className={`text-sm font-bold uppercase text-gray-900 ${CV_SEC_H3}`}>Certifications</h3>
                 </div>
                 <ul className="list-none pl-0 mt-4 space-y-1">
                   {certstemp4.map((c, i) => (
@@ -3168,7 +4990,7 @@ const Fill_cv = () => {
                     type="text"
                     value={experiencetemp5}
                     onChange={(e) => setExperiencetemp5(e.target.value)}
-                    className="text-xs font-normal uppercase tracking-wider bg-transparent text-gray-500 mb-3"
+                    className={`text-xs font-normal uppercase tracking-wider bg-transparent text-gray-500 mb-3 w-full ${CV_SEC_IN}`}
                   />
                   <div className="mb-4">
                     <input
@@ -3198,7 +5020,6 @@ const Fill_cv = () => {
                     <ul className="mt-2">
                       {workdone1temp5.map((item, index) => (
                         <li key={index} className="flex gap-2 mt-1">
-                          <span className="text-gray-400">•</span>
                           <RichTextBlock
                             value={item}
                             onChange={(v) => handleworkdonetemp5Change(index, v)}
@@ -3238,7 +5059,6 @@ const Fill_cv = () => {
                     <ul className="mt-2">
                       {workdone2temp5.map((item, index) => (
                         <li key={index} className="flex gap-2 mt-1">
-                          <span className="text-gray-400">•</span>
                           <RichTextBlock
                             value={item}
                             onChange={(v) => handleworkdone2temp5Change(index, v)}
@@ -3257,7 +5077,7 @@ const Fill_cv = () => {
                     type="text"
                     value={educationtemp5}
                     onChange={(e) => setEducationtemp5(e.target.value)}
-                    className="text-xs font-normal uppercase tracking-wider bg-transparent text-gray-500 mb-3"
+                    className={`text-xs font-normal uppercase tracking-wider bg-transparent text-gray-500 mb-3 w-full ${CV_SEC_IN}`}
                   />
                   <input
                     type="text"
@@ -3286,12 +5106,11 @@ const Fill_cv = () => {
                     type="text"
                     value={skillstemp5}
                     onChange={(e) => setSkillstemp5(e.target.value)}
-                    className="text-xs font-normal uppercase tracking-wider bg-transparent text-gray-500 mb-3"
+                    className={`text-xs font-normal uppercase tracking-wider bg-transparent text-gray-500 mb-3 w-full ${CV_SEC_IN}`}
                   />
                   <ul className="space-y-2">
                     {skillsdetailtemp5.map((item, index) => (
                       <li key={index} className="flex gap-2">
-                        <span className="text-gray-400">•</span>
                         <RichTextBlock
                           value={item}
                           onChange={(v) => handleskillstemp5Change(index, v)}
@@ -3327,12 +5146,12 @@ const Fill_cv = () => {
               {/* Left Column (2/3) */}
               <div className="flex-1 min-w-0">
                 <div className="mb-6">
-                  <input type="text" value={summarylabeltemp6} onChange={(e) => setSummarylabeltemp6(e.target.value)} className="text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black pb-2 mb-3 w-full" />
+                  <input type="text" value={summarylabeltemp6} onChange={(e) => setSummarylabeltemp6(e.target.value)} className={`text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black mb-3 w-full ${CV_SEC_IN}`} />
                   <RichTextBlock value={profileinfotemp6} onChange={setProfileinfotemp6} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed" minHeight="60px" placeholder="Professional summary..." />
                 </div>
 
                 <div className="mb-6">
-                  <input type="text" value={experiencetemp6} onChange={(e) => setExpriencetemp6(e.target.value)} className="text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black pb-2 mb-3 w-full" />
+                  <input type="text" value={experiencetemp6} onChange={(e) => setExpriencetemp6(e.target.value)} className={`text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black mb-3 w-full ${CV_SEC_IN}`} />
                   <div className="mb-4">
                     <input type="text" value={post1temp6} onChange={(e) => setPost1temp6(e.target.value)} className="text-sm font-bold bg-transparent w-full" />
                     <input type="text" value={company1temp6} onChange={(e) => setComapny1temp6(e.target.value)} className="text-sm font-bold bg-transparent w-full" style={{ color: accentBlue6 }} />
@@ -3343,7 +5162,6 @@ const Fill_cv = () => {
                     <ul className="mt-2 space-y-1">
                       {workdone1temp6.map((item, index) => (
                         <li key={index} className="flex gap-2 items-start">
-                          <span className="text-gray-400 flex-shrink-0 pt-0.5">•</span>
                           <RichTextBlock value={item} onChange={(v) => handleworkdone1temp6Change(index, v)} className="text-sm bg-transparent flex-1 min-w-0 text-gray-800 leading-snug" minHeight="24px" />
                         </li>
                       ))}
@@ -3359,7 +5177,6 @@ const Fill_cv = () => {
                     <ul className="mt-2 space-y-1">
                       {workdone2temp6.map((item, index) => (
                         <li key={index} className="flex gap-2 items-start">
-                          <span className="text-gray-400 flex-shrink-0 pt-0.5">•</span>
                           <RichTextBlock value={item} onChange={(v) => handleworkdone2temp6Change(index, v)} className="text-sm bg-transparent flex-1 min-w-0 text-gray-800 leading-snug" minHeight="24px" />
                         </li>
                       ))}
@@ -3368,7 +5185,7 @@ const Fill_cv = () => {
                 </div>
 
                 <div>
-                  <input type="text" value={educationlabeltemp6} onChange={(e) => setEducationlabeltemp6(e.target.value)} className="text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black pb-2 mb-3 w-full" />
+                  <input type="text" value={educationlabeltemp6} onChange={(e) => setEducationlabeltemp6(e.target.value)} className={`text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black mb-3 w-full ${CV_SEC_IN}`} />
                   <div className="mb-4">
                     <input type="text" value={facultytemp6} onChange={(e) => setFacultytemp6(e.target.value)} className="text-sm font-bold bg-transparent w-full" />
                     <input type="text" value={universitytemp6} onChange={(e) => setUniversitytemp6(e.target.value)} className="text-sm font-bold bg-transparent w-full" style={{ color: accentBlue6 }} />
@@ -3385,7 +5202,7 @@ const Fill_cv = () => {
               {/* Right Column (1/3) */}
               <div className="w-80 flex-shrink-0">
                 <div className="mb-6">
-                  <input type="text" value={achievementslabeltemp6} onChange={(e) => setAchievementslabeltemp6(e.target.value)} className="text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black pb-2 mb-3 w-full" />
+                  <input type="text" value={achievementslabeltemp6} onChange={(e) => setAchievementslabeltemp6(e.target.value)} className={`text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black mb-3 w-full ${CV_SEC_IN}`} />
                   {achievementstemp6.map((a, i) => (
                     <div key={i} className="mb-3">
                       <input type="text" value={a.title} onChange={(e) => handleAchievementtemp6Change(i, "title", e.target.value)} className="text-sm font-bold bg-transparent w-full" />
@@ -3395,7 +5212,7 @@ const Fill_cv = () => {
                 </div>
 
                 <div className="mb-6">
-                  <input type="text" value={skillslabeltemp6} onChange={(e) => setSkillslabeltemp6(e.target.value)} className="text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black pb-2 mb-3 w-full" />
+                  <input type="text" value={skillslabeltemp6} onChange={(e) => setSkillslabeltemp6(e.target.value)} className={`text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black mb-3 w-full ${CV_SEC_IN}`} />
                   <div className="flex flex-wrap gap-2">
                     {skillstemp6.map((s, i) => (
                       <input key={i} type="text" value={s} onChange={(e) => handleSkillstemp6Change(i, e.target.value)} className="px-2 py-1 text-xs bg-gray-100 rounded" />
@@ -3404,7 +5221,7 @@ const Fill_cv = () => {
                 </div>
 
                 <div className="mb-6">
-                  <input type="text" value={courseslabeltemp6} onChange={(e) => setCourseslabeltemp6(e.target.value)} className="text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black pb-2 mb-3 w-full" />
+                  <input type="text" value={courseslabeltemp6} onChange={(e) => setCourseslabeltemp6(e.target.value)} className={`text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black mb-3 w-full ${CV_SEC_IN}`} />
                   {coursestemp6.map((c, i) => (
                     <div key={i} className="mb-3">
                       <input type="text" value={c.title} onChange={(e) => handleCoursestemp6Change(i, "title", e.target.value)} className="text-sm font-bold bg-transparent w-full" style={{ color: accentBlue6 }} />
@@ -3414,7 +5231,7 @@ const Fill_cv = () => {
                 </div>
 
                 <div>
-                  <input type="text" value={passionslabeltemp6} onChange={(e) => setPassionslabeltemp6(e.target.value)} className="text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black pb-2 mb-3 w-full" />
+                  <input type="text" value={passionslabeltemp6} onChange={(e) => setPassionslabeltemp6(e.target.value)} className={`text-xs font-bold uppercase tracking-wider bg-transparent border-b-2 border-black mb-3 w-full ${CV_SEC_IN}`} />
                   {passionstemp6.map((p, i) => (
                     <div key={i} className="mb-3">
                       <input type="text" value={p.title} onChange={(e) => handlePassionstemp6Change(i, "title", e.target.value)} className="text-sm font-bold bg-transparent w-full" />
@@ -3440,8 +5257,8 @@ const Fill_cv = () => {
               <input type="text" value={professiontemp7} onChange={(e) => setProfessiontemp7(e.target.value)} className="text-sm bg-transparent w-full text-center text-white/90 mt-1 placeholder-white/60" placeholder="Title" />
 
               <div className="w-full mt-6 space-y-4">
-                <div className="bg-gray-600 rounded-lg px-3 py-1.5">
-                  <input type="text" value={contactlabeltemp7} onChange={(e) => setContactlabeltemp7(e.target.value)} className="text-xs font-bold uppercase bg-transparent w-full text-center text-black" />
+                <div className={`bg-gray-600 rounded-lg px-3 ${CV_SEC_H3_C} text-black`}>
+                  <input type="text" value={contactlabeltemp7} onChange={(e) => setContactlabeltemp7(e.target.value)} className="text-xs font-bold uppercase bg-transparent w-full text-center text-black min-h-0 py-0" />
                 </div>
                 <div className="space-y-2 text-sm text-left">
                   <div className="flex items-center gap-2">
@@ -3462,20 +5279,19 @@ const Fill_cv = () => {
                   </div>
                 </div>
 
-                <div className="bg-gray-600 rounded-lg px-3 py-1.5">
-                  <input type="text" value={skillslabeltemp7} onChange={(e) => setSkillslabeltemp7(e.target.value)} className="text-xs font-bold uppercase bg-transparent w-full text-center text-black" />
+                <div className={`bg-gray-600 rounded-lg px-3 ${CV_SEC_H3_C} text-black`}>
+                  <input type="text" value={skillslabeltemp7} onChange={(e) => setSkillslabeltemp7(e.target.value)} className="text-xs font-bold uppercase bg-transparent w-full text-center text-black min-h-0 py-0" />
                 </div>
                 <ul className="space-y-1.5 text-sm text-left pl-2">
                   {skillstemp7.map((s, i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <span className="text-white/80 mt-1">•</span>
                       <input type="text" value={s} onChange={(e) => handleSkillstemp7Change(i, e.target.value)} className="bg-transparent flex-1 text-white placeholder-white/50 text-sm" />
                     </li>
                   ))}
                 </ul>
 
-                <div className="bg-gray-600 rounded-lg px-3 py-1.5">
-                  <input type="text" value={educationlabeltemp7} onChange={(e) => setEducationlabeltemp7(e.target.value)} className="text-xs font-bold uppercase bg-transparent w-full text-center text-black" />
+                <div className={`bg-gray-600 rounded-lg px-3 ${CV_SEC_H3_C} text-black`}>
+                  <input type="text" value={educationlabeltemp7} onChange={(e) => setEducationlabeltemp7(e.target.value)} className="text-xs font-bold uppercase bg-transparent w-full text-center text-black min-h-0 py-0" />
                 </div>
                 <div className="text-sm text-left space-y-1">
                   <input type="text" value={facultytemp7} onChange={(e) => setFacultytemp7(e.target.value)} className="bg-transparent w-full text-white placeholder-white/50" />
@@ -3487,10 +5303,10 @@ const Fill_cv = () => {
 
             {/* Right Column - Light grey main */}
             <div className="bg-gray-200 p-8 min-w-0" style={{ width: "100%" }} data-template7-main>
-              <input type="text" value={profilelabeltemp7} onChange={(e) => setProfilelabeltemp7(e.target.value)} className="text-sm font-bold uppercase tracking-wide bg-transparent border-b-2 border-black pb-2 mb-4 w-full text-gray-900" />
+              <input type="text" value={profilelabeltemp7} onChange={(e) => setProfilelabeltemp7(e.target.value)} className={`text-sm font-bold uppercase tracking-wide bg-transparent border-b-2 border-black mb-4 w-full text-gray-900 ${CV_SEC_IN}`} />
               <RichTextBlock value={profiletemp7} onChange={setProfiletemp7} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed mb-8" minHeight="120px" placeholder="Profile..." />
 
-              <input type="text" value={worklabeltemp7} onChange={(e) => setWorklabeltemp7(e.target.value)} className="text-sm font-bold uppercase tracking-wide bg-transparent border-b-2 border-black pb-2 mb-4 w-full text-gray-900" />
+              <input type="text" value={worklabeltemp7} onChange={(e) => setWorklabeltemp7(e.target.value)} className={`text-sm font-bold uppercase tracking-wide bg-transparent border-b-2 border-black mb-4 w-full text-gray-900 ${CV_SEC_IN}`} />
               <div className="space-y-6">
                 <div>
                   <input type="text" value={post1temp7} onChange={(e) => setPost1temp7(e.target.value)} className="text-sm font-bold uppercase w-full bg-transparent text-gray-900" />
@@ -3546,13 +5362,13 @@ const Fill_cv = () => {
             <div className="p-6 space-y-6">
               {/* About Me */}
               <div>
-                <input type="text" value={aboutlabeltemp8} onChange={(e) => setAboutlabeltemp8(e.target.value)} className="text-sm font-bold uppercase tracking-wide bg-transparent border-b border-gray-800 pb-2 mb-3 w-full text-gray-800" />
+                <input type="text" value={aboutlabeltemp8} onChange={(e) => setAboutlabeltemp8(e.target.value)} className={`text-sm font-bold uppercase tracking-wide bg-transparent border-b border-gray-800 mb-3 w-full text-gray-800 ${CV_SEC_IN}`} />
                 <RichTextBlock value={abouttemp8} onChange={setAbouttemp8} className="text-sm bg-transparent w-full text-gray-700 leading-relaxed" minHeight="80px" placeholder="About you..." />
               </div>
 
               {/* Education - 3 columns */}
               <div>
-                <input type="text" value={educationlabeltemp8} onChange={(e) => setEducationlabeltemp8(e.target.value)} className="text-sm font-bold uppercase tracking-wide bg-transparent border-b border-gray-800 pb-2 mb-4 w-full text-gray-800" />
+                <input type="text" value={educationlabeltemp8} onChange={(e) => setEducationlabeltemp8(e.target.value)} className={`text-sm font-bold uppercase tracking-wide bg-transparent border-b border-gray-800 mb-4 w-full text-gray-800 ${CV_SEC_IN}`} />
                 <div className="grid grid-cols-3 gap-4">
                   {[edu1temp8, edu2temp8, edu3temp8].map((edu, i) => (
                     <div key={i} className="border border-gray-200 rounded p-4">
@@ -3567,7 +5383,7 @@ const Fill_cv = () => {
 
               {/* Work Experience */}
               <div>
-                <input type="text" value={worklabeltemp8} onChange={(e) => setWorklabeltemp8(e.target.value)} className="text-sm font-bold uppercase tracking-wide bg-transparent border-b border-gray-800 pb-2 mb-4 w-full text-gray-800" />
+                <input type="text" value={worklabeltemp8} onChange={(e) => setWorklabeltemp8(e.target.value)} className={`text-sm font-bold uppercase tracking-wide bg-transparent border-b border-gray-800 mb-4 w-full text-gray-800 ${CV_SEC_IN}`} />
                 <div className="space-y-4">
                   <div>
                     <input type="text" value={post1temp8} onChange={(e) => setPost1temp8(e.target.value)} className="text-sm font-bold uppercase bg-transparent w-full text-gray-800" />
@@ -3615,7 +5431,7 @@ const Fill_cv = () => {
                 type="text"
                 value={profilelabeltemp9}
                 onChange={(e) => setProfilelabeltemp9(e.target.value)}
-                className="text-xs font-medium tracking-[0.35em] uppercase bg-transparent mb-3 block w-full text-center"
+                className={`text-xs font-medium tracking-[0.35em] uppercase bg-transparent mb-3 block w-full text-center ${CV_SEC_IN}`}
                 style={{ color: "#333333" }}
               />
               <RichTextBlock
@@ -3637,7 +5453,7 @@ const Fill_cv = () => {
                     type="text"
                     value={contactlabeltemp9}
                     onChange={(e) => setContactlabeltemp9(e.target.value)}
-                    className="text-xs font-medium tracking-[0.35em] uppercase bg-transparent mb-4 block w-full text-[#333333]"
+                    className={`text-xs font-medium tracking-[0.35em] uppercase bg-transparent mb-4 block w-full text-[#333333] ${CV_SEC_IN}`}
                   />
                   <div className="space-y-3 text-sm text-[#333333]">
                     <div className="flex items-start gap-3">
@@ -3660,7 +5476,7 @@ const Fill_cv = () => {
                     type="text"
                     value={educationlabeltemp9}
                     onChange={(e) => setEducationlabeltemp9(e.target.value)}
-                    className="text-xs font-medium tracking-[0.35em] uppercase bg-transparent text-[#333333] mb-4 block w-full"
+                    className={`text-xs font-medium tracking-[0.35em] uppercase bg-transparent text-[#333333] mb-4 block w-full ${CV_SEC_IN}`}
                   />
                   <input type="text" value={facultytemp9} onChange={(e) => setFacultytemp9(e.target.value)} className="text-sm font-bold uppercase bg-transparent block w-full text-[#333333]" placeholder="Degree / Major" />
                   <input type="text" value={universitytemp9} onChange={(e) => setUniversitytemp9(e.target.value)} className="text-sm bg-transparent block w-full text-[#333333] mt-1" placeholder="University" />
@@ -3672,7 +5488,7 @@ const Fill_cv = () => {
                     type="text"
                     value={skillslabeltemp9}
                     onChange={(e) => setSkillslabeltemp9(e.target.value)}
-                    className="text-xs font-medium tracking-[0.35em] uppercase bg-transparent text-[#333333] mb-4 block w-full"
+                    className={`text-xs font-medium tracking-[0.35em] uppercase bg-transparent text-[#333333] mb-4 block w-full ${CV_SEC_IN}`}
                   />
                   <ul className="space-y-2 text-sm text-[#333333]">
                     {skillstemp9.map((s, i) => (
@@ -3695,7 +5511,7 @@ const Fill_cv = () => {
                   type="text"
                   value={worklabeltemp9}
                   onChange={(e) => setWorklabeltemp9(e.target.value)}
-                  className="text-xs font-medium tracking-[0.35em] uppercase bg-transparent text-[#333333] mb-6 block w-full min-w-0"
+                  className={`text-xs font-medium tracking-[0.35em] uppercase bg-transparent text-[#333333] mb-6 block w-full min-w-0 ${CV_SEC_IN}`}
                 />
 
                 {/* Job 1 */}
@@ -3704,7 +5520,7 @@ const Fill_cv = () => {
                   <input type="text" value={post1temp9} onChange={(e) => setPost1temp9(e.target.value)} className="text-sm font-bold uppercase bg-transparent w-full text-[#333333]" placeholder="Job Position" />
                   <input type="text" value={company1temp9} onChange={(e) => setCompany1temp9(e.target.value)} className="text-sm bg-transparent w-full text-[#555555] mt-0.5" placeholder="Company/Location/Years" />
                   <RichTextBlock value={workdesc1temp9} onChange={setWorkdesc1temp9} className="text-sm bg-transparent w-full text-[#333333] mt-2 leading-relaxed" minHeight="40px" />
-                  <ul className="mt-2 space-y-1 pl-4 list-disc text-sm text-[#333333]">
+                  <ul className="mt-2 space-y-1 pl-4 list-none text-sm text-[#333333]">
                     {wrokdone1temp9.map((item, i) => (
                       <li key={i}>
                         <RichTextBlock value={item} onChange={(v) => { const arr = [...wrokdone1temp9]; arr[i] = v; setWorkdone1temp9(arr); }} className="inline bg-transparent" minHeight="20px" />
@@ -3719,7 +5535,7 @@ const Fill_cv = () => {
                   <input type="text" value={post2temp9} onChange={(e) => setPost2temp9(e.target.value)} className="text-sm font-bold uppercase bg-transparent w-full text-[#333333]" placeholder="Job Position" />
                   <input type="text" value={company2temp9} onChange={(e) => setCompany2temp9(e.target.value)} className="text-sm bg-transparent w-full text-[#555555] mt-0.5" placeholder="Company/Location/Years" />
                   <RichTextBlock value={workdesc2temp9} onChange={setWorkdesc2temp9} className="text-sm bg-transparent w-full text-[#333333] mt-2 leading-relaxed" minHeight="40px" />
-                  <ul className="mt-2 space-y-1 pl-4 list-disc text-sm text-[#333333]">
+                  <ul className="mt-2 space-y-1 pl-4 list-none text-sm text-[#333333]">
                     {workdone2temp9.map((item, i) => (
                       <li key={i}>
                         <RichTextBlock value={item} onChange={(v) => { const arr = [...workdone2temp9]; arr[i] = v; setWorkdone2temp9(arr); }} className="inline bg-transparent" minHeight="20px" />
@@ -3735,168 +5551,131 @@ const Fill_cv = () => {
       case 10:
         return (
           <div
-            className="w-full max-w-4xl mx-auto p-8 bg-white rounded-lg shadow-lg overflow-visible"
+            data-template10
+            className="w-full max-w-4xl mx-auto p-8 bg-white rounded-lg shadow-lg overflow-visible text-gray-800"
             style={{ minHeight: "1100px" }}
           >
             <div className="min-h-full overflow-visible">
-              {/* Header - centered with name and profession */}
-              <div className={`${getTextColor()} p-6 text-center relative`}>
-                <div className="flex flex-col items-center justify-center">
-                  <input type="text"
-                    value={nametemp10}
-                    onChange={(e) => setNametemp10(e.target.value)}
-                    placeholder="Your Name"
-                    className="font-bold text-4xl bg-transparent w-full max-w-2xl text-center break-words"
-                  />
-                  <input type="text"
-                    value={professiontemp10}
-                    onChange={(e) => setProfessiontemp10(e.target.value)}
-                    placeholder="Job Title"
-                    className="text-xl mt-2 bg-transparent w-full max-w-2xl text-center break-words"
-                  />
-                </div>
-                <div className="absolute top-6 right-6">
-                  <div
-                    className="w-24 h-24 overflow-hidden rounded-xl border-4 border-white "
-                    onClick={() => document.getElementById("Imageinput10").click()}
-                  >
-                    <img
-                      src={selectedImage10 || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect fill='%23e2e8f0' width='96' height='96'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-size='12' font-family='sans-serif'%3EPhoto%3C/text%3E%3C/svg%3E"}
-                      alt="Profile"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                </div>
-                <input
-                  type="file"
-                  id="Imageinput10"
-                  accept="image/*"
-                  onChange={handleImageChange10}
-                  className="hidden"
+              {/* Header - name top-left, title below */}
+              <div className="mb-4">
+                <input type="text"
+                  value={nametemp10}
+                  onChange={(e) => setNametemp10(e.target.value)}
+                  placeholder="Your Name"
+                  className="font-bold text-3xl bg-transparent w-full text-black break-words"
+                />
+                <input type="text"
+                  value={professiontemp10}
+                  onChange={(e) => setProfessiontemp10(e.target.value)}
+                  placeholder="Professional Title"
+                  className="text-base font-semibold mt-1 bg-transparent w-full text-gray-600 break-words"
                 />
               </div>
 
-              <div className="flex flex-col md:flex-row min-h-0 mt-6 overflow-visible">
-                {/* Left Section */}
-                <div className="md:w-1/2 bg-slate-50 p-8 min-w-0 overflow-visible rounded-r-lg">
-                  <input type="text"
-                    value={aboutmetemp10}
-                    onChange={(e) => setAboutmetemp10(e.target.value)}
-                    className="text-2xl font-bold mb-4 bg-transparent w-full break-words"
-                  />
-                  <textarea
-                    ref={aboutMeTemp10Ref}
-                    value={aboutmeinfotemp10}
-                    onChange={(e) => setAboutmeinfotemp10(e.target.value)}
-                    className="text-base bg-transparent resize-none w-full min-h-[120px] break-words overflow-y-auto"
-                  />
-
-                  <input type="text"
-                    value={skillslabeltemp10}
-                    onChange={(e) => setSkillslabeltemp10(e.target.value)}
-                    className="text-2xl font-bold mt-8 mb-4 bg-transparent w-full break-words"
-                  />
-                  <ul className="space-y-1">
-                    {skillstemp10.map((skillstemp10, index) => (
-                      <li key={index}>
-                        <input
-                          type="text"
-                          value={skillstemp10}
-                          onChange={(e) =>
-                            handleskillstemp10Chnage(index, e.target.value)
-                          }
-                          className="bg-transparent w-full break-words text-sm"
-                        />
-                      </li>
-                    ))}
-                  </ul>
+              {/* Contact - two columns */}
+              <div data-template10-contact className="flex flex-wrap gap-x-12 gap-y-1 mb-6 text-sm">
+                <div className="space-y-1">
+                  <div><span className="font-bold text-gray-700">Address</span> <input type="text" value={addresstemp10} onChange={(e) => setAddresstemp10(e.target.value)} className="bg-transparent inline w-64" placeholder="Street, City, State" /></div>
+                  <div><span className="font-bold text-gray-700">Phone</span> <input type="text" value={phonetemp10} onChange={(e) => setPhonetemp10(e.target.value)} className="bg-transparent inline w-40" placeholder="Phone" /></div>
+                  <div><span className="font-bold text-gray-700">E-mail</span> <input type="text" value={emailtemp10} onChange={(e) => setEmailtemp10(e.target.value)} className="bg-transparent inline w-48" placeholder="Email" /></div>
                 </div>
+                <div>
+                  <div><span className="font-bold text-gray-700">LinkedIn</span> <input type="text" value={linkedintemp10} onChange={(e) => setLinkedintemp10(e.target.value)} className="bg-transparent inline w-56" placeholder="linkedin.com/in/username" /></div>
+                </div>
+              </div>
 
-                {/* Right Section */}
-                <div className="md:w-1/2 bg-white p-8 min-w-0 overflow-visible">
-                  <input type="text"
-                    value={experiencetemp10}
-                    onChange={(e) => setExperiencetemp10(e.target.value)}
-                    className="text-2xl font-bold mb-4 bg-transparent w-full break-words"
-                  />
-                  <div className="mt-4">
-                    <input type="text"
-                      value={post1temp10}
-                      onChange={(e) => setPost1temp10(e.target.value)}
-                      className="text-lg font-semibold w-full break-words"
-                    />
-                    <input type="text"
-                      value={company1temp10}
-                      onChange={(e) => setCompany1temp10(e.target.value)}
-                      className="italic bg-transparent w-full break-words block mt-1"
-                    />
-                    <ul className="mt-2 space-y-2 list-none pl-0">
-                      {workdone1temp10.map((workdone1temp10, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <span className="text-gray-700 font-bold flex-shrink-0 mt-0.5">•</span>
-                          <textarea
-                            value={workdone1temp10}
-                            onChange={(e) =>
-                              handleworkdone1temp10Chnage(index, e.target.value)
-                            }
-                            className="bg-transparent flex-1 resize-none break-words text-sm py-0 min-w-0"
-                            rows={2}
-                          />
+              {/* Summary */}
+              <textarea
+                ref={aboutMeTemp10Ref}
+                value={aboutmeinfotemp10}
+                onChange={(e) => setAboutmeinfotemp10(e.target.value)}
+                onInput={(e) => resizeTextareaOnInput(e, 60)}
+                className="text-sm bg-transparent resize-none w-full min-h-[60px] break-words overflow-y-auto text-gray-700 leading-relaxed mb-8"
+                placeholder="Professional summary..."
+              />
+
+              {/* Section: Experience - pixel-art computer icon + title + line */}
+              <div className="mb-8">
+                <div className="flex items-center gap-2 mb-2 min-h-[3.25rem]">
+                  <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center self-center" style={{ backgroundColor: '#4A90D9' }} title="Experience">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="white"><rect x="1" y="2" width="12" height="8" rx="1"/><rect x="2" y="3" width="10" height="5"/><rect x="4" y="9" width="2" height="2"/><rect x="8" y="9" width="2" height="2"/><rect x="5" y="11" width="4" height="1"/></svg>
+                  </div>
+                  <input type="text" value={experiencetemp10} onChange={(e) => setExperiencetemp10(e.target.value)} className={`font-bold text-base bg-transparent flex-1 border-b-2 border-gray-600 ${CV_SEC_IN}`} />
+                </div>
+                <div className="flex gap-6 mt-4">
+                  <div className="flex-shrink-0 text-sm text-gray-600 text-right" style={{ width: '22%', minWidth: '100px' }}>
+                    <input type="text" value={date1temp10} onChange={(e) => setDate1temp10(e.target.value)} className="bg-transparent w-full text-right" placeholder="YYYY-MM - YYYY-MM" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <input type="text" value={post1temp10} onChange={(e) => setPost1temp10(e.target.value)} className="font-bold text-sm w-full bg-transparent" placeholder="Job Title" />
+                    <input type="text" value={company1temp10} onChange={(e) => setCompany1temp10(e.target.value)} className="text-sm text-gray-600 w-full bg-transparent block mt-0.5" placeholder="Company, Location" />
+                    <ul className="mt-2 space-y-1 list-none pl-0 text-sm">
+                      {workdone1temp10.map((item, i) => (
+                        <li key={i} className="flex gap-2">
+                          <textarea value={item} onChange={(e) => handleworkdone1temp10Chnage(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="bg-transparent flex-1 text-sm resize-none min-h-[24px]" rows={1} placeholder="Responsibility" />
                         </li>
                       ))}
                     </ul>
                   </div>
-
-                  <div className="mt-6">
-                    <input type="text"
-                      value={post2temp10}
-                      onChange={(e) => setPost2temp10(e.target.value)}
-                      className="text-lg font-semibold bg-transparent w-full break-words"
-                    />
-                    <input type="text"
-                      value={company2temp10}
-                      onChange={(e) => setCompany2temp10(e.target.value)}
-                      className="italic bg-transparent w-full break-words block mt-1"
-                    />
-                    <ul className="mt-2 space-y-2 list-none pl-0">
-                      {workdone2temp10.map((workdone2temp10, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <span className="text-gray-700 font-bold flex-shrink-0 mt-0.5">•</span>
-                          <textarea
-                            value={workdone2temp10}
-                            onChange={(e) =>
-                              handleworkdone2temp10Change(index, e.target.value)
-                            }
-                            className="bg-transparent flex-1 resize-none break-words text-sm py-0 min-w-0"
-                            rows={2}
-                          />
+                </div>
+                <div className="flex gap-6 mt-5">
+                  <div className="flex-shrink-0 text-sm text-gray-600 text-right" style={{ width: '22%', minWidth: '100px' }}>
+                    <input type="text" value={date2temp10} onChange={(e) => setDate2temp10(e.target.value)} className="bg-transparent w-full text-right" placeholder="YYYY-MM - YYYY-MM" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <input type="text" value={post2temp10} onChange={(e) => setPost2temp10(e.target.value)} className="font-bold text-sm w-full bg-transparent" placeholder="Job Title" />
+                    <input type="text" value={company2temp10} onChange={(e) => setCompany2temp10(e.target.value)} className="text-sm text-gray-600 w-full bg-transparent block mt-0.5" placeholder="Company, Location" />
+                    <ul className="mt-2 space-y-1 list-none pl-0 text-sm">
+                      {workdone2temp10.map((item, i) => (
+                        <li key={i} className="flex gap-2">
+                          <textarea value={item} onChange={(e) => handleworkdone2temp10Change(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="bg-transparent flex-1 text-sm resize-none min-h-[24px]" rows={1} placeholder="Responsibility" />
                         </li>
                       ))}
                     </ul>
                   </div>
+                </div>
+              </div>
 
-                  <input type="text"
-                    value={educationlabeltemp10}
-                    onChange={(e) => setEducationlabeltemp10(e.target.value)}
-                    className="text-2xl font-bold mt-8 bg-transparent w-full break-words"
-                  />
-                  <div className="mt-4">
-                    <input type="text"
-                      value={facultytemp10}
-                      onChange={(e) => setFacultytemp10(e.target.value)}
-                      className="text-lg font-semibold bg-transparent w-full break-words"
-                    />
-                    <input type="text"
-                      value={universitytemp10}
-                      onChange={(e) => setUniversitytemp10(e.target.value)}
-                      className="italic bg-transparent w-full break-words block mt-1"
-                    />
-                    <input type="text"
-                      value={datetemp10}
-                      onChange={(e) => setDatetemp10(e.target.value)}
-                      className="bg-transparent w-full break-words mt-1"
-                    />
+              {/* Section: Education - pixel-art graduation cap icon */}
+              <div className="mb-8">
+                <div className="flex items-center gap-2 mb-2 min-h-[3.25rem]">
+                  <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center self-center" style={{ backgroundColor: '#6B5B95' }} title="Education">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="white"><path d="M7 2L1 5h12L7 2zm0 2l4 2.5v4H3v-4L7 4zM4 9h6v3H4V9z"/></svg>
                   </div>
+                  <input type="text" value={educationlabeltemp10} onChange={(e) => setEducationlabeltemp10(e.target.value)} className={`font-bold text-base bg-transparent flex-1 border-b-2 border-gray-600 ${CV_SEC_IN}`} />
+                </div>
+                <div className="flex gap-6 mt-4">
+                  <div className="flex-shrink-0 text-sm text-gray-600 text-right" style={{ width: '22%', minWidth: '100px' }}>
+                    <input type="text" value={eduDate1temp10} onChange={(e) => setEduDate1temp10(e.target.value)} className="bg-transparent w-full text-right" placeholder="YYYY-MM - YYYY-MM" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <input type="text" value={facultytemp10} onChange={(e) => setFacultytemp10(e.target.value)} className="font-bold text-sm w-full bg-transparent" placeholder="Degree" />
+                    <input type="text" value={universitytemp10} onChange={(e) => setUniversitytemp10(e.target.value)} className="text-sm text-gray-600 w-full bg-transparent block mt-0.5" placeholder="Institution, Location" />
+                    <input type="text" value={gpatemp10} onChange={(e) => setGpatemp10(e.target.value)} className="text-sm w-full bg-transparent mt-0.5" placeholder="GPA (optional)" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Skills - pixel-art gear icon, progress bars with dark grey fill */}
+              <div data-template10-skills>
+                <div className="flex items-center gap-2 mb-2 min-h-[3.25rem]">
+                  <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center self-center" style={{ backgroundColor: '#2E7D32' }} title="Skills">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="white"><circle cx="7" cy="7" r="2.5"/><rect x="6.5" y="1" width="1" height="2.5"/><rect x="6.5" y="10.5" width="1" height="2.5"/><rect x="1" y="6.5" width="2.5" height="1"/><rect x="10.5" y="6.5" width="2.5" height="1"/><rect x="2.8" y="2.8" width="1.2" height="1.2" transform="rotate(-45 3.4 3.4)"/><rect x="10" y="10" width="1.2" height="1.2" transform="rotate(-45 10.6 10.6)"/><rect x="10" y="2.8" width="1.2" height="1.2" transform="rotate(45 10.6 3.4)"/><rect x="2.8" y="10" width="1.2" height="1.2" transform="rotate(45 3.4 10.6)"/></svg>
+                  </div>
+                  <input type="text" value={skillslabeltemp10} onChange={(e) => setSkillslabeltemp10(e.target.value)} className={`font-bold text-base bg-transparent flex-1 border-b-2 border-gray-600 ${CV_SEC_IN}`} />
+                </div>
+                <div className="mt-4 space-y-3">
+                  {skillstemp10.map((skill, i) => (
+                    <div key={i} data-template10-skillrow className="flex items-center gap-4">
+                      <input data-template10-skillname type="text" value={skill} onChange={(e) => handleskillstemp10Chnage(i, e.target.value)} className="w-44 flex-shrink-0 text-sm bg-transparent" placeholder="Skill" />
+                      <div data-template10-skillwrap className="flex-1 flex items-center gap-3 min-w-[120px]">
+                        <div data-template10-skillbar className="flex-1 h-2.5 bg-gray-200 overflow-hidden rounded-sm min-w-[80px]" style={{ minHeight: "10px" }}>
+                          <div className="h-full rounded-sm transition-all" style={{ width: `${skillLeveltemp10[i] || 0}%`, backgroundColor: '#374151', minHeight: "10px" }} />
+                        </div>
+                        <input type="number" min={0} max={100} value={skillLeveltemp10[i] ?? 0} onChange={(e) => handleSkillLeveltemp10Change(i, e.target.value)} className="w-12 text-xs bg-transparent border border-gray-300 rounded px-1.5 py-0.5 text-right tabular-nums" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -3906,225 +5685,111 @@ const Fill_cv = () => {
       case 11:
         return (
           <div
-            className="w-full max-w-2xl mx-auto p-10 bg-white rounded-lg shadow-lg overflow-visible"
+            data-template11
+            className="w-full max-w-3xl mx-auto p-8 bg-white rounded-lg shadow-lg overflow-visible font-serif"
             style={{ minHeight: "1100px" }}
           >
-            <div className="min-h-full overflow-visible relative">
-              <div
-                className="absolute top-6 right-6 w-24 h-24 overflow-hidden rounded-xl border-2 border-slate-200 shadow-sm bg-slate-50"
-                onClick={() => document.getElementById("imageInput").click()}
-              >
-                <img
-                  src={selectedImage11 || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect fill='%23e5e7eb' width='96' height='96'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='14' font-family='sans-serif'%3EPhoto%3C/text%3E%3C/svg%3E"}
-                  alt="profile"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect fill='%23e5e7eb' width='96' height='96'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='14'%3EPhoto%3C/text%3E%3C/svg%3E";
-                  }}
-                />
-              </div>
-              <input
-                type="file"
-                id="imageInput"
-                accept="image/*"
-                onChange={handleImageChange11}
-                className="hidden"
-              />
-          
-                 
-
-
-
-
-              {/* Header */}
-              <div className="text-center mb-10 flex flex-col items-center">
-                <input type="text"
-                  value={nametemp11}
-                  onChange={(e) => setNametemp11(e.target.value)}
-                  className="text-3xl font-bold text-slate-800 bg-transparent w-full max-w-md text-center tracking-tight placeholder-slate-400"
-                  placeholder="Your Name"
-                />
-                <input type="text"
+            <div className="min-h-full overflow-visible">
+              {/* Header - name in gold border, profession below */}
+              <div className="text-center mb-10">
+                <div className="inline-block py-2 px-6 border-2 mb-2" style={{ borderColor: '#8B7355' }}>
+                  <input
+                    type="text"
+                    value={nametemp11}
+                    onChange={(e) => setNametemp11(e.target.value)}
+                    className="text-2xl font-bold text-black bg-transparent w-full text-center uppercase tracking-wide placeholder-gray-400"
+                    placeholder="YOUR NAME"
+                  />
+                </div>
+                <input
+                  type="text"
                   value={professiontemp11}
                   onChange={(e) => setProfessiontemp11(e.target.value)}
-                  className="text-base font-medium text-slate-600 mt-2 bg-transparent w-full max-w-md text-center placeholder-slate-400"
+                  className="text-base font-medium text-black bg-transparent w-full text-center block mt-1 placeholder-gray-500"
                   placeholder="Professional Title"
                 />
-                <input type="text"
-                  value={emailtemp11}
-                  onChange={(e) => setEmailtemp11(e.target.value)}
-                  className="mt-2 bg-transparent w-full max-w-md text-center text-sm text-slate-500 placeholder-slate-400"
-                  placeholder="email@example.com"
-                />
               </div>
 
-              {/* Summary */}
-              <div className="mb-8">
-                <input type="text"
-                  value={summarytemp11}
-                  onChange={(e) => setSummarytemp11(e.target.value)}
-                  className="text-xs font-semibold uppercase tracking-wider text-slate-500 bg-transparent mb-2"
-                  placeholder="Summary"
-                />
-                {/* <p className="mt-4">
-                  Dynamic marketing professional with 6+ years of experience in
-                  digital campaigns, SEO, and content creation. Adept at leading
-                  cross-functional teams to deliver high-impact projects.
-                </p> */}
-                <textarea
-                  ref={summaryTemp11Ref}
-                  value={summaryinfotemp11}
-                  onChange={(e) => setSummaryinfotemp11(e.target.value)}
-                  className="mt-2 bg-transparent w-full resize-none min-h-[80px] break-words overflow-y-auto text-slate-700 text-sm leading-relaxed focus:outline-none"
-                  rows={3}
-                  placeholder="Professional summary..."
-                />
-              </div>
-
-              {/* Experience */}
-              <div className="mb-8">
-                <input type="text"
-                  value={experiencetemp11}
-                  onChange={(e) => setExperiencetemp11(e.target.value)}
-                  className="text-xs font-semibold uppercase tracking-wider text-slate-500 bg-transparent mb-3"
-                  placeholder="Experience"
-                />
-                <div className="mt-4">
-                  {/* <h3 className="text-lg font-semibold">
-                    Senior Digital Marketing Manager
-                  </h3> */}
-                  <input type="text"
-                    value={post1temp11}
-                    onChange={(e) => setPost1temp11(e.target.value)}
-                    className="text-lg font-semibold bg-transparent w-full"
-                  />
-                  {/* <p className="italic">XYZ Marketing Solutions</p> */}
-                  <input type="text"
-                    value={company1temp11}
-                    onChange={(e) => setCompany1temp11(e.target.value)}
-                    className="italic bg-transparent w-full"
-                  />
-                  {/* <ul className="list-disc pl-5 mt-2">
-                    <li>
-                      Led a team of 10 to develop and implement comprehensive
-                      marketing strategies.
-                    </li>
-                    <li>
-                      Increased online sales by 30% through targeted campaigns.
-                    </li>
-                    <li>Managed a $500k annual marketing budget.</li>
-                  </ul> */}
-                  <ul className="mt-2 space-y-2 list-none pl-0">
-                    {workdone1temp11.map((workdone1temp11, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <span className="text-gray-700 font-bold flex-shrink-0 mt-0.5">•</span>
-                        <textarea
-                          value={workdone1temp11}
-                          onChange={(e) =>
-                            handleworkdone1temp11Change(index, e.target.value)
-                          }
-                          className="bg-transparent flex-1 resize-none break-words text-sm py-0 min-w-0"
-                          rows={2}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="mt-6">
-                  <input type="text"
-                    value={post2temp11}
-                    onChange={(e) => setPost2temp11(e.target.value)}
-                    className="text-lg font-semibold bg-transparent w-full"
-                  />
-                  <input type="text"
-                    value={company2temp11}
-                    onChange={(e) => setCompany2temp11(e.target.value)}
-                    className="italic bg-transparent w-full block mt-1"
-                  />
-                  <ul className="mt-2 space-y-2 list-none pl-0">
-                    {workdone2temp11.map((workdone2temp11, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <span className="text-gray-700 font-bold flex-shrink-0 mt-0.5">•</span>
-                        <textarea
-                          value={workdone2temp11}
-                          onChange={(e) =>
-                            handleworkdone2temp11Change(index, e.target.value)
-                          }
-                          className="bg-transparent flex-1 resize-none break-words text-sm py-0 min-w-0"
-                          rows={2}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              {/* Education */}
-              <div className="mb-8">
-                <input type="text"
-                  value={educationtemp11}
-                  onChange={(e) => seteducationtemp11(e.target.value)}
-                  className="text-xs font-semibold uppercase tracking-wider text-slate-500 bg-transparent mb-3"
-                  placeholder="Education"
-                />
-                <div className="mt-4">
-                  {/* <h3 className="text-lg font-semibold">
-                    Bachelor of Science in Marketing
-                  </h3> */}
-                  <input type="text"
-                    value={facultytemp11}
-                    onChange={(e) => setFacultytemp11(e.target.value)}
-                    className="text-lg font-semibold bg-transparent w-full"
-                  />
-                  {/* <p className="italic">State University</p> */}
-                  <input type="text"
-                    value={universitytemp11}
-                    onChange={(e) => setUniversitytemp11(e.target.value)}
-                    className="italic bg-transparent w-full"
-                  />
-                  {/* <p>09/2008 - 06/2012</p> */}
-                  <input type="text"
-                    value={datetemp11}
-                    onChange={(e) => setDatetemp11(e.target.value)}
-                    className="bg-transparent w-full"
-                  />
-                </div>
-              </div>
-
-              {/* Skills */}
-              <div>
-                <input type="text"
-                  value={skilllabelstemp11}
-                  onChange={(e) => setSkillslabeltemp11(e.target.value)}
-                  className="text-xs font-semibold uppercase tracking-wider text-slate-500 bg-transparent mb-3"
-                  placeholder="Skills"
-                />
-                {/* <ul className="mt-4 space-y-2">
-                  <li>SEO & SEM</li>
-                  <li>Google Analytics</li>
-                  <li>Content Marketing</li>
-                  <li>Email Campaigns</li>
-                </ul> */}
-                <ul className=" pl-5 mt-2 space-y-2">
-                      {skillstemp11.map((skillstemp11, index) => {
-                        return (
-                          <li key={index}>
-                            <input
-                              type="text"
-                              value={skillstemp11}
-                              onChange={(e) =>
-                                handleskillstemp11Change(
-                                  index,
-                                  e.target.value
-                                )
-                              }
-                              className=" bg-transparent w-full "
-                            />
-                          </li>
-                        );
-                      })}
+              {/* Two columns with vertical divider */}
+              <div data-template11-cols className="flex gap-0 min-h-[600px]">
+                {/* Left column */}
+                <div data-template11-left className="w-1/3 min-w-[220px] pr-6 text-right flex flex-col gap-6 overflow-visible" style={{ borderRight: '2px solid #8B7355' }}>
+                  <div data-template11-contact>
+                    <input type="text" defaultValue="CONTACT" className={`text-xs font-bold uppercase tracking-wider text-black bg-transparent mb-2 w-full text-right ${CV_SEC_IN}`} readOnly />
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex items-center justify-end gap-2 min-w-0">
+                        <input type="text" value={emailtemp11} onChange={(e) => setEmailtemp11(e.target.value)} className="bg-transparent text-right min-w-0 flex-1" placeholder="Email" />
+                        <span className="text-gray-500 flex-shrink-0">✉</span>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 min-w-0">
+                        <input type="text" value={phonetemp11} onChange={(e) => setPhonetemp11(e.target.value)} className="bg-transparent text-right min-w-0 flex-1" placeholder="Phone" />
+                        <span className="text-gray-500 flex-shrink-0">📞</span>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 min-w-0">
+                        <input type="text" value={locationtemp11} onChange={(e) => setLocationtemp11(e.target.value)} className="bg-transparent text-right min-w-0 flex-1" placeholder="Location" />
+                        <span className="text-gray-500 flex-shrink-0">📍</span>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 min-w-0">
+                        <input type="text" value={linkedintemp11} onChange={(e) => setLinkedintemp11(e.target.value)} className="bg-transparent text-right min-w-0 flex-1" placeholder="LinkedIn" />
+                        <span className="text-gray-500 flex-shrink-0">in</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <input type="text" value={educationtemp11} onChange={(e) => seteducationtemp11(e.target.value)} className={`text-xs font-bold uppercase tracking-wider text-black bg-transparent mb-2 w-full text-right ${CV_SEC_IN}`} />
+                    <div className="text-sm text-right space-y-1 min-w-0">
+                      <input type="text" value={facultytemp11} onChange={(e) => setFacultytemp11(e.target.value)} className="bg-transparent w-full min-w-0 text-right font-medium break-words" placeholder="Degree" />
+                      <input type="text" value={universitytemp11} onChange={(e) => setUniversitytemp11(e.target.value)} className="bg-transparent w-full min-w-0 text-right italic break-words" placeholder="University, dates, location" />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <input type="text" value={skilllabelstemp11} onChange={(e) => setSkillslabeltemp11(e.target.value)} className={`text-xs font-bold uppercase tracking-wider text-black bg-transparent mb-2 w-full text-right ${CV_SEC_IN}`} />
+                    <ul className="space-y-1 text-sm text-right min-w-0">
+                      {skillstemp11.map((s, i) => (
+                        <li key={i}>
+                          <input type="text" value={s} onChange={(e) => handleskillstemp11Change(i, e.target.value)} className="bg-transparent w-full min-w-0 text-right break-words" />
+                        </li>
+                      ))}
                     </ul>
+                  </div>
+                </div>
+
+                {/* Right column */}
+                <div data-template11-right className="flex-1 pl-8">
+                  <input type="text" value={experiencetemp11} onChange={(e) => setExperiencetemp11(e.target.value)} className={`text-xs font-bold uppercase tracking-wider text-black bg-transparent mb-4 w-full ${CV_SEC_IN}`} />
+                  <div className="space-y-6">
+                    <div>
+                      <input type="text" value={post1temp11} onChange={(e) => setPost1temp11(e.target.value)} className="text-base font-bold bg-transparent w-full" placeholder="Job Title" />
+                      <input type="text" value={company1temp11} onChange={(e) => setCompany1temp11(e.target.value)} className="text-sm italic bg-transparent w-full block mt-0.5" placeholder="Company" />
+                      <input type="text" value={date1temp11} onChange={(e) => setDate1temp11(e.target.value)} className="text-xs text-gray-600 bg-transparent w-full mt-0.5" placeholder="Dates" />
+                      <ul className="mt-2 space-y-1 list-none pl-5 text-sm">
+                        {workdone1temp11.map((item, i) => (
+                          <li key={i}><textarea value={item} onChange={(e) => handleworkdone1temp11Change(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="bg-transparent w-full text-sm resize-none min-h-[24px]" rows={1} /></li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <input type="text" value={post2temp11} onChange={(e) => setPost2temp11(e.target.value)} className="text-base font-bold bg-transparent w-full" placeholder="Job Title" />
+                      <input type="text" value={company2temp11} onChange={(e) => setCompany2temp11(e.target.value)} className="text-sm italic bg-transparent w-full block mt-0.5" placeholder="Company" />
+                      <input type="text" value={date2temp11} onChange={(e) => setDate2temp11(e.target.value)} className="text-xs text-gray-600 bg-transparent w-full mt-0.5" placeholder="Dates" />
+                      <ul className="mt-2 space-y-1 list-none pl-5 text-sm">
+                        {workdone2temp11.map((item, i) => (
+                          <li key={i}><textarea value={item} onChange={(e) => handleworkdone2temp11Change(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="bg-transparent w-full text-sm resize-none min-h-[24px]" rows={1} /></li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <input type="text" value={post3temp11} onChange={(e) => setPost3temp11(e.target.value)} className="text-base font-bold bg-transparent w-full" placeholder="Job Title" />
+                      <input type="text" value={company3temp11} onChange={(e) => setCompany3temp11(e.target.value)} className="text-sm italic bg-transparent w-full block mt-0.5" placeholder="Company" />
+                      <input type="text" value={date3temp11} onChange={(e) => setDate3temp11(e.target.value)} className="text-xs text-gray-600 bg-transparent w-full mt-0.5" placeholder="Dates" />
+                      <ul className="mt-2 space-y-1 list-none pl-5 text-sm">
+                        {workdone3temp11.map((item, i) => (
+                          <li key={i}><textarea value={item} onChange={(e) => handleworkdone3temp11Change(i, e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="bg-transparent w-full text-sm resize-none min-h-[24px]" rows={1} /></li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -4133,255 +5798,182 @@ const Fill_cv = () => {
       case 12:
         return (
           <div
-            className="w-full max-w-3xl mx-auto p-8 bg-white rounded-lg shadow-lg"
-            style={{ height: "1100px" }}
+            data-template12
+            className="w-full max-w-3xl mx-auto p-8 bg-white rounded-lg shadow-lg overflow-visible"
+            style={{ minHeight: "1100px" }}
           >
-            <div className="h-full flex flex-col">
-              {/* Header */}
-              <div className={`flex items-center ${getTextColor()} p-6`} style={getColorStyle('gray-800', 'dark')}>
-                <div className="w-2/3">
-                  {/* <h1 className="text-4xl font-bold">John Doe</h1> */}
+            <div className="h-full flex flex-col overflow-visible">
+              {/* Two-column layout: main left (~2/3) + sidebar right (~1/3) */}
+              <div className="flex-grow flex flex-col md:flex-row">
+                {/* Left column - main content */}
+                <div data-template12-left className="md:w-2/3 bg-white p-6 min-w-0">
                   <input
                     type="text"
                     value={nametemp12}
                     onChange={(e) => setNametemp12(e.target.value)}
-                    className="text-4xl font-bold bg-transparent w-[250px]"
+                    className="text-3xl font-bold bg-transparent w-full text-blue-600"
+                    placeholder="Name"
                   />
-                  {/* <p className="text-xl mt-2">Software Engineer</p> */}
                   <input
                     type="text"
                     value={professiontemp12}
                     onChange={(e) => setProfessiontemp12(e.target.value)}
-                    className="text-xl mt-2 bg-transparent"
+                    className="text-lg font-normal text-gray-600 bg-transparent w-full mt-1"
+                    placeholder="Professional Title"
                   />
-                </div>
-
-                {/* //image field */}
-                <div className="relative ">
-                  <div
-                  
-                    className="w-24 h-24 overflow-hidden rounded-xl border-4 border-white cursor-pointer ml-[-200px] "
-                    onClick={() =>
-                      document.getElementById("imageInput").click()
-                    }
-                  >
-                    {/* Image Preview */}
-                    <img
-                      src={selectedImage12 || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect fill='%23e2e8f0' width='96' height='96'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-size='12' font-family='sans-serif'%3EPhoto%3C/text%3E%3C/svg%3E"}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <input
-                    type="file"
-                    id="imageInput"
-                    accept="image/*"
-                    onChange={handleImageChange12}
-                    className="hidden"
-                  />
-                </div>
-
-                <div className="w-1/3 text-right ">
-                  {/* <p>Email: john.doe@example.com</p> */}
-                  <input
-                    type="text"
-                    value={emailtemp12}
-                    onChange={(e) => setEmailtemp12(e.target.value)}
-                    className="bg-transparent w-full "
-                  />
-                  {/* <p>Phone: (555) 555-5555</p> */}
-                  <input
-                    type="text"
-                    value={phonetemp12}
-                    onChange={(e) => setPhonetemp12(e.target.value)}
-                    className="bg-transparent w-full"
-                  />
-                  {/* <p>Website: www.johndoe.com</p> */}
-                  <input
-                    type="text"
-                    value={websitetemp12}
-                    onChange={(e) => setwebsitetemp12(e.target.value)}
-                    className="bg-transparent w-full"
-                  />
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="flex-grow flex flex-col md:flex-row mt-6">
-                {/* Left Section */}
-                <div className="md:w-1/2 bg-gray-100 p-6">
-                  {/* <h2 className="text-2xl font-bold mb-4">Profile</h2> */}
-                  <input
-                    type="text"
-                    value={profiletemp12}
-                    onChange={(e) => setProfiletemp12(e.target.value)}
-                    className="text-2xl font-bold mb-4 bg-transparent"
-                  />
-                  {/* <p>
-                    Experienced software engineer with a strong background in
-                    developing scalable web applications. Expertise in
-                    JavaScript, Python, and cloud services.
-                  </p> */}
                   <textarea
-                    type="text"
-                    value={profileinfotemp12}
-                    onChange={(e) => setProfileinfotemp12(e.target.value)}
-                    className="resize-none  w-full h-[130px] bg-transparent"
+                    value={summaryinfotemp12}
+                    onChange={(e) => setSummaryinfotemp12(e.target.value)}
+                    onInput={(e) => resizeTextareaOnInput(e, 80)}
+                    className="resize-none w-full min-h-[80px] bg-transparent text-gray-600 text-sm mt-4"
+                    placeholder="Professional Summary"
                   />
-
-                  {/* <h2 className="text-2xl font-bold mt-12 mb-4">Education</h2> */}
-                  <input
-                    type="text"
-                    value={educationtemp12}
-                    onChange={(e) => setEducationtemp12(e.target.value)}
-                    className="bg-transparent text-2xl font-bold mt-12 "
-                  />
-                  <div className="mt-4">
-                    {/* <h3 className="text-lg font-semibold">
-                      Bachelor of Science in Computer Science
-                    </h3> */}
+                  <div data-template12-work className="border-t border-gray-300 mt-6 pt-4 overflow-visible">
                     <input
                       type="text"
-                      value={facultytemp12}
-                      onChange={(e) => setFacultytemp12(e.target.value)}
-                      className="bg-transparent text-lg font-semibold w-full"
+                      value={experiencetemp12}
+                      onChange={(e) => setExperiencetemp12(e.target.value)}
+                      className={`bg-transparent text-sm font-bold uppercase text-gray-800 w-full ${CV_SEC_IN}`}
+                      placeholder="WORK EXPERIENCE"
                     />
-                    {/* <p className="italic">State University</p> */}
-                    <input
-                      type="text"
-                      value={universitytemp12}
-                      onChange={(e) => setUniversitytemp12(e.target.value)}
-                      className="italic bg-transparent"
-                    />
-                    {/* <p>09/2010 - 06/2014</p> */}
-                    <input
-                      type="text"
-                      value={datetemp12}
-                      onChange={(e) => setDatetemp12(e.target.value)}
-                      className="bg-transparent"
-                    />
+                    <div className="mt-4 overflow-visible">
+                      <div className="flex justify-between items-start gap-2">
+                        <input
+                          data-template12-jobtitle
+                          type="text"
+                          value={post1temp12}
+                          onChange={(e) => setPost1temp12(e.target.value)}
+                          className="bg-transparent font-bold text-gray-800 flex-1 min-w-0"
+                          placeholder="Job Title"
+                        />
+                        <input
+                          data-template12-date
+                          type="text"
+                          value={date1temp12}
+                          onChange={(e) => setDate1temp12(e.target.value)}
+                          className="bg-transparent text-sm font-bold text-gray-800 shrink-0 w-36 text-right"
+                          placeholder="Dates"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={company1temp12}
+                        onChange={(e) => setCompany1temp12(e.target.value)}
+                        className="text-sm text-gray-600 italic bg-transparent w-full mt-0.5"
+                        placeholder="Company, Location"
+                      />
+                      <ul className="list-none mt-2 space-y-1">
+                        {workdone1temp12.map((item, i) => (
+                          <li key={i}>
+                            <textarea
+                              value={item}
+                              onChange={(e) => handleworkdone1temp12Change(i, e.target.value)}
+                              onInput={(e) => resizeTextareaOnInput(e, 24)}
+                              className="bg-transparent w-full text-sm resize-none min-h-[24px]"
+                              rows={1}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="mt-6 overflow-visible">
+                      <div className="flex justify-between items-start gap-2">
+                        <input
+                          data-template12-jobtitle
+                          type="text"
+                          value={post2temp12}
+                          onChange={(e) => setPost2temp12(e.target.value)}
+                          className="bg-transparent font-bold text-gray-800 flex-1 min-w-0"
+                          placeholder="Job Title"
+                        />
+                        <input
+                          data-template12-date
+                          type="text"
+                          value={date2temp12}
+                          onChange={(e) => setDate2temp12(e.target.value)}
+                          className="bg-transparent text-sm font-bold text-gray-800 shrink-0 w-36 text-right"
+                          placeholder="Dates"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={company2temp12}
+                        onChange={(e) => setCompany2temp12(e.target.value)}
+                        className="text-sm text-gray-600 italic bg-transparent w-full mt-0.5"
+                        placeholder="Company, Location"
+                      />
+                      <ul className="list-none mt-2 space-y-1">
+                        {workdone2temp12.map((item, i) => (
+                          <li key={i}>
+                            <textarea
+                              value={item}
+                              onChange={(e) => handleworkdone2temp12Change(i, e.target.value)}
+                              onInput={(e) => resizeTextareaOnInput(e, 24)}
+                              className="bg-transparent w-full text-sm resize-none min-h-[24px]"
+                              rows={1}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </div>
 
-                {/* Right Section */}
-                <div className="md:w-1/2 bg-white text-gray-800 p-6">
-                  {/* <h2 className="text-2xl font-bold mb-4">Experience</h2> */}
-                  <input
-                    type="text"
-                    value={experiencetemp12}
-                    onChange={(e) => setExperiencetemp12(e.target.value)}
-                    className="bg-transparent text-2xl font-bold "
-                  />
-                  <div className="mt-4">
-                    {/* <h3 className="text-lg font-semibold">
-                      Senior Software Engineer
-                    </h3> */}
+                {/* Right sidebar - contact, skills, education, other */}
+                <div data-template12-right className="md:w-1/3 bg-gray-100 p-6 min-w-[220px]">
+                  <div className="mb-6">
                     <input
                       type="text"
-                      value={post1temp12}
-                      onChange={(e) => setPost1temp12(e.target.value)}
-                      className="bg-transparent text-lg font-semibold"
+                      value="CONTACT"
+                      readOnly
+                      className={`bg-transparent text-xs font-bold uppercase text-blue-600 w-full border-b border-blue-600 ${CV_SEC_IN}`}
                     />
-                    {/* <p className="italic">Tech Solutions</p> */}
-                    <input
-                      type="text"
-                      value={company1temp12}
-                      onChange={(e) => setCompany1temp12(e.target.value)}
-                      className="italic bg-transparent"
-                    />
-                    {/* <ul className="list-disc pl-5 mt-2">
-                      <li>
-                        Led the development of a scalable e-commerce platform.
-                      </li>
-                      <li>Integrated RESTful APIs and third-party services.</li>
-                      <li>
-                        Mentored junior developers and conducted code reviews.
-                      </li>
-                    </ul> */}
-                    {/* <ul className="list-disc pl-5  mt-2">
-                        {workdone1temp12.map(workdone1temp12, index) => {
-                            return (
-                                <li key = {index}>
-                                    <input type="text" 
-                                        value={workdone1temp12}
-                                        onChange={(e) => setWorkdone1temp12(e.target.value)}
-                                    />
-                                </li>
-                            )
-                        }}
-
-                    </ul> */}
-
-                    <ul className=" pl-5  mt-2  ">
-                      {workdone1temp12.map((workdone1temp12, index) => {
-                        return (
-                          <li key={index}>
-                            <textarea
-                              type="text"
-                              value={workdone1temp12}
-                              onChange={(e) =>
-                                handleworkdone1temp12Change(
-                                  index,
-                                  e.target.value
-                                )
-                              }
-                              className=" bg-transparent w-full resize-none ml-2 "
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <div className="mt-3 space-y-2 text-sm">
+                      <input type="text" value={locationtemp12} onChange={(e) => setLocationtemp12(e.target.value)} className="bg-transparent w-full text-gray-600" placeholder="Location" />
+                      <input type="text" value={phonetemp12} onChange={(e) => setPhonetemp12(e.target.value)} className="bg-transparent w-full text-gray-600" placeholder="Phone" />
+                      <input type="text" value={emailtemp12} onChange={(e) => setEmailtemp12(e.target.value)} className="bg-transparent w-full text-gray-600" placeholder="Email" />
+                      <input type="text" value={linkedintemp12} onChange={(e) => setLinkedintemp12(e.target.value)} className="bg-transparent w-full text-gray-600" placeholder="LinkedIn" />
+                      <input type="text" value={githublinktemp12} onChange={(e) => setGithublinktemp12(e.target.value)} className="bg-transparent w-full text-gray-600" placeholder="GitHub" />
+                    </div>
                   </div>
-
-                  <div className="mt-6">
-                    {/* <h3 className="text-lg font-semibold">Software Engineer</h3> */}
+                  <div className="mb-6">
                     <input
                       type="text"
-                      value={post2temp12}
-                      onChange={(e) => setPost2temp12(e.target.value)}
-                      className="text-lg font-semibold bg-transparent"
+                      value="SKILLS"
+                      readOnly
+                      className={`bg-transparent text-xs font-bold uppercase text-blue-600 w-full border-b border-blue-600 ${CV_SEC_IN}`}
                     />
-                    {/* <p className="italic">Innovatech</p> */}
+                    <div className="mt-3 space-y-2">
+                      {skillstemp12.map((s, i) => (
+                        <input key={i} type="text" value={s} onChange={(e) => handleSkillstemp12Change(i, e.target.value)} className="bg-transparent w-full text-sm text-gray-600" placeholder="Skill" />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mb-6">
                     <input
                       type="text"
-                      value={company2temp12}
-                      onChange={(e) => setCompany2temp12(e.target.value)}
-                      className="italic bg-transparent"
+                      value={educationtemp12}
+                      onChange={(e) => setEducationtemp12(e.target.value)}
+                      className={`bg-transparent text-xs font-bold uppercase text-blue-600 w-full border-b border-blue-600 ${CV_SEC_IN}`}
                     />
-                    {/* <ul className="list-disc pl-5 mt-2">
-                      <li>
-                        Developed and maintained web applications using React
-                        and Node.js.
-                      </li>
-                      <li>
-                        Collaborated with cross-functional teams to deliver
-                        projects on time.
-                      </li>
-                      <li>
-                        Optimized applications for maximum speed and
-                        scalability.
-                      </li>
-                    </ul> */}
-
-                    <ul className=" pl-5  mt-2  ">
-                      {workdone2temp12.map((workdone2temp12, index) => {
-                        return (
-                          <li key={index}>
-                            <textarea
-                              type="text"
-                              value={workdone2temp12}
-                              onChange={(e) =>
-                                handleworkdone2temp12Change(
-                                  index,
-                                  e.target.value
-                                )
-                              }
-                              className=" bg-transparent w-full resize-none ml-2 "
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <div className="mt-3">
+                      <input type="text" value={facultytemp12} onChange={(e) => setFacultytemp12(e.target.value)} className="bg-transparent w-full font-semibold text-gray-800" placeholder="Degree" />
+                      <input type="text" value={universitytemp12} onChange={(e) => setUniversitytemp12(e.target.value)} className="bg-transparent w-full text-sm text-gray-600 mt-1" placeholder="University, Location, Dates" />
+                      <input type="text" value={awardstemp12} onChange={(e) => setAwardstemp12(e.target.value)} className="bg-transparent w-full text-sm text-gray-600 mt-1" placeholder="Awards" />
+                    </div>
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={othertemp12}
+                      onChange={(e) => setOthertemp12(e.target.value)}
+                      className={`bg-transparent text-xs font-bold uppercase text-blue-600 w-full border-b border-blue-600 ${CV_SEC_IN}`}
+                    />
+                    <div className="mt-3 space-y-2">
+                      {certificationstemp12.map((c, i) => (
+                        <input key={i} type="text" value={c} onChange={(e) => handleCertificationstemp12Change(i, e.target.value)} className="bg-transparent w-full text-sm text-gray-600" placeholder="Certification" />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4390,140 +5982,464 @@ const Fill_cv = () => {
         );
 
       case 13:
+        const sidebarBlue13 = '#3B82F6';
         return (
-          <div className="w-full max-w-2xl mx-auto bg-white p-8" style={{ height: "1100px" }}>
-            <div className="border-b-2 border-gray-800 pb-4 mb-6">
-              <input type="text" value={nametemp13} onChange={(e) => setNametemp13(e.target.value)} className="text-3xl font-bold bg-transparent w-full" placeholder="Your Name" />
-              <input type="text" value={professiontemp13} onChange={(e) => setProfessiontemp13(e.target.value)} className="text-lg text-gray-600 bg-transparent w-full mt-1" placeholder="Professional Title" />
-            </div>
-            <div className="mb-6">
-              <h3 className="text-sm font-bold uppercase text-gray-500 mb-2">Professional Summary</h3>
-              <textarea value={summarytemp13} onChange={(e) => setSummarytemp13(e.target.value)} className="w-full bg-transparent resize-none text-sm" rows={3} />
-            </div>
-            <div className="mb-6">
-              <h3 className="text-sm font-bold uppercase text-gray-500 mb-2">Skills</h3>
-              <div className="flex flex-wrap gap-2">
-                {skillstemp13.map((s, i) => (
-                  <input key={i} type="text" value={s} onChange={(e) => handleSkillstemp13Change(i, e.target.value)} className="bg-gray-50 px-2 py-1 text-sm w-24" />
-                ))}
+          <div data-template13 className="w-full max-w-3xl mx-auto rounded-lg shadow-lg overflow-visible" style={{ minHeight: "1100px" }}>
+            <div className="flex">
+              {/* Left column - main content */}
+              <div className="flex-1 min-w-0 bg-white p-6">
+                <input type="text" value={nametemp13} onChange={(e) => setNametemp13(e.target.value)} className="text-2xl font-bold bg-transparent w-full text-gray-900" placeholder="Name" />
+                <input type="text" value={professiontemp13} onChange={(e) => setProfessiontemp13(e.target.value)} className="text-base font-bold text-gray-800 bg-transparent w-full mt-1" placeholder="Professional Title" />
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-sm text-gray-600">
+                  <span className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    <input type="text" value={emailtemp13} onChange={(e) => setEmailtemp13(e.target.value)} className="bg-transparent w-48" placeholder="Email" />
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                    <input type="text" value={linkedintemp13} onChange={(e) => setLinkedintemp13(e.target.value)} className="bg-transparent w-40" placeholder="LinkedIn" />
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    <input type="text" value={locationtemp13} onChange={(e) => setLocationtemp13(e.target.value)} className="bg-transparent w-40" placeholder="Location" />
+                  </span>
+                </div>
+                <div className="mt-6">
+                  <input type="text" value="SUMMARY" readOnly className={`text-xs font-bold uppercase text-gray-800 bg-transparent w-full border-b border-gray-300 ${CV_SEC_IN}`} />
+                  <textarea value={summarytemp13} onChange={(e) => setSummarytemp13(e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 60)} className="w-full bg-transparent resize-none text-sm min-h-[60px] mt-2 text-gray-700" rows={3} placeholder="Professional summary" />
+                </div>
+                <div className="mt-6">
+                  <input type="text" value="EXPERIENCE" readOnly className={`text-xs font-bold uppercase text-gray-800 bg-transparent w-full border-b border-gray-300 ${CV_SEC_IN}`} />
+                  <div className="mt-4">
+                    <div className="flex justify-between items-center gap-3">
+                      <input data-template13-jobtitle type="text" value={post1temp13} onChange={(e) => setPost1temp13(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0" placeholder="Job Title" />
+                      <input data-template13-date type="text" value={date1temp13} onChange={(e) => setDate1temp13(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[140px] w-[140px] text-right text-gray-600 whitespace-nowrap" placeholder="e.g. 01/2019 - Present" />
+                    </div>
+                    <div className="flex justify-between items-center gap-3 mt-0.5">
+                      <input data-template13-company type="text" value={company1temp13} onChange={(e) => setCompany1temp13(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-sm" placeholder="Company" />
+                      <input data-template13-loc type="text" value={location1temp13} onChange={(e) => setLocation1temp13(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[100px] w-[100px] text-right text-gray-600 whitespace-nowrap" placeholder="e.g. Seattle, WA" />
+                    </div>
+                    <ul className="list-none mt-2 space-y-1 text-sm text-gray-700 pl-1">
+                      {workdone1temp13.map((w, i) => (
+                        <li key={i}><input type="text" value={w} onChange={(e) => handleWorkdone1temp13Change(i, e.target.value)} className="bg-transparent w-full text-sm" /></li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="mt-4">
+                    <div className="flex justify-between items-center gap-3">
+                      <input data-template13-jobtitle type="text" value={post2temp13} onChange={(e) => setPost2temp13(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0" placeholder="Job Title" />
+                      <input data-template13-date type="text" value={date2temp13} onChange={(e) => setDate2temp13(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[140px] w-[140px] text-right text-gray-600 whitespace-nowrap" placeholder="e.g. 06/2016 - 12/2018" />
+                    </div>
+                    <div className="flex justify-between items-center gap-3 mt-0.5">
+                      <input data-template13-company type="text" value={company2temp13} onChange={(e) => setCompany2temp13(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-sm" placeholder="Company" />
+                      <input data-template13-loc type="text" value={location2temp13} onChange={(e) => setLocation2temp13(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[100px] w-[100px] text-right text-gray-600 whitespace-nowrap" placeholder="e.g. Remote" />
+                    </div>
+                    <ul className="list-none mt-2 space-y-1 text-sm text-gray-700 pl-1">
+                      {workdone2temp13.map((w, i) => (
+                        <li key={i}><input type="text" value={w} onChange={(e) => handleWorkdone2temp13Change(i, e.target.value)} className="bg-transparent w-full text-sm" /></li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <input type="text" value="EDUCATION" readOnly className={`text-xs font-bold uppercase text-gray-800 bg-transparent w-full border-b border-gray-300 ${CV_SEC_IN}`} />
+                  <div className="mt-4">
+                    <div className="flex justify-between items-start gap-2">
+                      <input data-template13-edu-degree type="text" value={facultytemp13} onChange={(e) => setFacultytemp13(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0" placeholder="Degree" />
+                      <input data-template13-edu-date type="text" value={dateedutemp13} onChange={(e) => setDateedutemp13(e.target.value)} className="text-sm bg-transparent shrink-0 w-28 text-right text-gray-600" placeholder="e.g. 2012 - 2016" />
+                    </div>
+                    <div className="flex justify-between items-start gap-2 mt-0.5">
+                      <input data-template13-edu-university type="text" value={universitytemp13} onChange={(e) => setUniversitytemp13(e.target.value)} className="bg-transparent flex-1 min-w-0 text-sm" placeholder="University" />
+                      <input data-template13-edu-loc type="text" value={locationedutemp13} onChange={(e) => setLocationedutemp13(e.target.value)} className="text-sm bg-transparent shrink-0 w-28 text-right text-gray-600" placeholder="City, State" />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <input type="text" value="LANGUAGES" readOnly className={`text-xs font-bold uppercase text-gray-800 bg-transparent w-full border-b border-gray-300 ${CV_SEC_IN}`} />
+                  <div className="mt-4 flex flex-wrap gap-x-8 gap-y-4">
+                    {languagestemp13.map((lang, i) => (
+                      <div key={i} className="flex items-center gap-2 shrink-0">
+                        <input data-template13-lang type="text" value={lang.name} onChange={(e) => handleLanguagetemp13Change(i, 'name', e.target.value)} className="font-bold bg-transparent min-w-[90px] text-sm whitespace-nowrap" placeholder="Language" />
+                        <input data-template13-lang-level type="text" value={lang.level} onChange={(e) => handleLanguagetemp13Change(i, 'level', e.target.value)} className="bg-transparent min-w-[70px] text-sm text-gray-600 whitespace-nowrap" placeholder="Level" />
+                        <div className="flex gap-0.5 shrink-0">
+                          {[1,2,3,4,5].map((d) => (
+                            <div key={d} className={`w-2 h-2 rounded-full ${d <= (lang.dots || 0) ? 'bg-gray-800' : 'bg-gray-300'}`} title={`${d}/5`} onClick={() => handleLanguagetemp13Change(i, 'dots', d)} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="mb-6">
-              <h3 className="text-sm font-bold uppercase text-gray-500 mb-2">Experience</h3>
-              <input type="text" value={post1temp13} onChange={(e) => setPost1temp13(e.target.value)} className="font-semibold bg-transparent w-full" />
-              <input type="text" value={company1temp13} onChange={(e) => setCompany1temp13(e.target.value)} className="text-gray-600 italic bg-transparent w-full text-sm" />
-              <ul className="list-disc pl-5 mt-2 space-y-1">
-                {workdone1temp13.map((w, i) => (
-                  <li key={i}><input type="text" value={w} onChange={(e) => handleWorkdone1temp13Change(i, e.target.value)} className="bg-transparent w-full text-sm" /></li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-sm font-bold uppercase text-gray-500 mb-2">Education</h3>
-              <input type="text" value={facultytemp13} onChange={(e) => setFacultytemp13(e.target.value)} className="font-semibold bg-transparent w-full" />
-              <input type="text" value={universitytemp13} onChange={(e) => setUniversitytemp13(e.target.value)} className="text-gray-600 bg-transparent w-full text-sm" />
-              <input type="text" value={datetemp13} onChange={(e) => setDatetemp13(e.target.value)} className="text-gray-500 bg-transparent w-full text-sm" />
+              {/* Right column - blue sidebar */}
+              <div className="w-[35%] min-w-[200px] p-6 text-white" style={{ backgroundColor: sidebarBlue13 }}>
+                <div className="mb-6">
+                  <input type="text" value="ACHIEVEMENTS" readOnly className={`text-xs font-bold uppercase bg-transparent w-full border-b border-white/50 ${CV_SEC_IN}`} />
+                  <div className="mt-3 space-y-3">
+                    {achievementstemp13.map((a, i) => (
+                      <div key={i}>
+                        <input type="text" value={a.title} onChange={(e) => handleAchievementtemp13Change(i, 'title', e.target.value)} className="font-bold bg-transparent w-full text-white placeholder-white/60" placeholder="Title" />
+                        <textarea value={a.desc} onChange={(e) => handleAchievementtemp13Change(i, 'desc', e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="text-sm bg-transparent w-full text-white/90 placeholder-white/50 mt-0.5 resize-none min-h-[24px]" placeholder="Description" rows={1} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-6">
+                  <input type="text" value="SKILLS" readOnly className={`text-xs font-bold uppercase bg-transparent w-full border-b border-white/50 ${CV_SEC_IN}`} />
+                  <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 min-w-0" data-template13-skills>
+                    {skillstemp13.map((s, i) => (
+                      <input key={i} data-template13-skill type="text" value={s} onChange={(e) => handleSkillstemp13Change(i, e.target.value)} className="bg-white/10 text-white placeholder-white/50 px-2 py-1 rounded text-sm w-full min-w-0" placeholder="Skill" />
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-6">
+                  <input type="text" value="PROJECTS" readOnly className={`text-xs font-bold uppercase bg-transparent w-full border-b border-white/50 ${CV_SEC_IN}`} />
+                  <div className="mt-3 space-y-3">
+                    {projectstemp13.map((p, i) => (
+                      <div key={i}>
+                        <input type="text" value={p.title} onChange={(e) => handleProjecttemp13Change(i, 'title', e.target.value)} className="font-bold bg-transparent w-full text-white placeholder-white/60" placeholder="Project" />
+                        <textarea value={p.desc} onChange={(e) => handleProjecttemp13Change(i, 'desc', e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="text-sm bg-transparent w-full text-white/90 placeholder-white/50 mt-0.5 resize-none min-h-[24px]" placeholder="Description" rows={1} />
+                        <input type="text" value={p.link} onChange={(e) => handleProjecttemp13Change(i, 'link', e.target.value)} className="text-xs bg-transparent w-full text-white/80 placeholder-white/40 mt-0.5" placeholder="GitHub link" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-6">
+                  <input type="text" value="CERTIFICATION" readOnly className={`text-xs font-bold uppercase bg-transparent w-full border-b border-white/50 ${CV_SEC_IN}`} />
+                  <div className="mt-3 space-y-3">
+                    {certificationstemp13.map((c, i) => (
+                      <div key={i}>
+                        <input type="text" value={c.title} onChange={(e) => handleCertificationtemp13Change(i, 'title', e.target.value)} className="font-bold bg-transparent w-full text-white placeholder-white/60" placeholder="Certification" />
+                        <textarea value={c.issuer} onChange={(e) => handleCertificationtemp13Change(i, 'issuer', e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="text-sm bg-transparent w-full text-white/90 placeholder-white/50 mt-0.5 resize-none min-h-[24px]" placeholder="Issuer" rows={1} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <input type="text" value="PASSIONS" readOnly className={`text-xs font-bold uppercase bg-transparent w-full border-b border-white/50 ${CV_SEC_IN}`} />
+                  <div className="mt-3 space-y-3">
+                    {passionstemp13.map((p, i) => (
+                      <div key={i}>
+                        <input type="text" value={p.title} onChange={(e) => handlePassiontemp13Change(i, 'title', e.target.value)} className="font-bold bg-transparent w-full text-white placeholder-white/60" placeholder="Title" />
+                        <textarea value={p.desc} onChange={(e) => handlePassiontemp13Change(i, 'desc', e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 24)} className="text-sm bg-transparent w-full text-white/90 placeholder-white/50 mt-0.5 resize-none min-h-[24px]" placeholder="Description" rows={1} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         );
 
       case 14:
-        const sidebarStyle14 = getColorStyle('blue-900');
-        const sidebarBg14 = sidebarStyle14.backgroundColor || '#0f172a';
+        const redAccent14 = '#C00000';
         return (
-          <div className="w-full max-w-3xl mx-auto overflow-hidden" style={{ height: "1100px" }}>
-            <div className="flex h-full">
-              <div className="w-1/3 p-6 text-white" style={{ backgroundColor: sidebarBg14 }}>
-                <input type="text" value={nametemp14} onChange={(e) => setNametemp14(e.target.value)} className="text-xl font-bold bg-transparent w-full text-white placeholder-white/60" placeholder="Name" />
-                <input type="text" value={professiontemp14} onChange={(e) => setProfessiontemp14(e.target.value)} className="text-sm italic bg-transparent w-full text-white/90 mt-1 placeholder-white/60" placeholder="Title" />
-                <div className="mt-6">
-                  <h3 className="text-xs font-bold uppercase opacity-80 mb-2">Contact</h3>
-                  <textarea value={contacttemp14} onChange={(e) => setContacttemp14(e.target.value)} className="bg-transparent w-full text-sm text-white/90 resize-none" rows={3} />
+          <div data-template14 className="w-full max-w-3xl mx-auto bg-white overflow-visible" style={{ minHeight: "1100px", fontFamily: 'Helvetica, Arial, sans-serif' }}>
+            {/* Header: Name (first black, last red) */}
+            <div className="px-8 pt-8 pb-2">
+              <div className="flex flex-wrap items-baseline gap-1">
+                <input data-template14-firstname type="text" value={firstnametemp14} onChange={(e) => setFirstnametemp14(e.target.value.toUpperCase())} className="text-2xl font-bold bg-transparent w-auto min-w-[80px] uppercase tracking-wide text-black placeholder-gray-400" placeholder="FIRST" style={{ fontSize: '1.5rem' }} />
+                <input data-template14-lastname type="text" value={lastnametemp14} onChange={(e) => setLastnametemp14(e.target.value.toUpperCase())} className="text-2xl font-bold bg-transparent w-auto min-w-[80px] uppercase tracking-wide placeholder-gray-400" placeholder="LAST" style={{ fontSize: '1.5rem', color: redAccent14 }} />
+              </div>
+            </div>
+            {/* Contact bar: black bg, white text, pipes */}
+            <div data-template14-contact className="bg-black text-white py-2.5 px-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
+              <input type="text" value={locationtemp14} onChange={(e) => setLocationtemp14(e.target.value)} className="bg-transparent text-white placeholder-white/60 flex-1 min-w-[120px] text-center" placeholder="Location" />
+              <span className="text-white/80">|</span>
+              <input type="text" value={phonetemp14} onChange={(e) => setPhonetemp14(e.target.value)} className="bg-transparent text-white placeholder-white/60 flex-1 min-w-[100px] text-center" placeholder="Phone" />
+              <span className="text-white/80">|</span>
+              <input type="text" value={emailtemp14} onChange={(e) => setEmailtemp14(e.target.value)} className="bg-transparent text-white placeholder-white/60 flex-1 min-w-[140px] text-center" placeholder="Email" />
+            </div>
+
+            {/* Section: Professional Summary */}
+            <div className="px-8 pt-6">
+              <h3 data-template14-section className={`text-lg font-normal text-black mb-2 ${CV_SEC_H3}`} style={{ fontSize: '1.1rem' }}>Professional Summary</h3>
+              <div data-template14-divider className="h-0.5 w-full mb-4" style={{ backgroundColor: redAccent14 }} />
+              <textarea data-template14-summary value={summarytemp14} onChange={(e) => setSummarytemp14(e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 80)} className="w-full bg-transparent text-sm text-gray-800 resize-none min-h-[60px]" rows={3} placeholder="Your professional summary..." />
+            </div>
+
+            {/* Section: Work History */}
+            <div className="px-8 pt-6">
+              <h3 data-template14-section className={`text-lg font-normal text-black mb-2 ${CV_SEC_H3}`} style={{ fontSize: '1.1rem' }}>Work History</h3>
+              <div data-template14-divider className="h-0.5 w-full mb-4" style={{ backgroundColor: redAccent14 }} />
+              <div className="space-y-6">
+                <div>
+                  <div className="flex flex-wrap justify-between items-baseline gap-2 mb-1">
+                    <input data-template14-jobtitle type="text" value={post1temp14} onChange={(e) => setPost1temp14(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-black" placeholder="Job Title" />
+                    <input data-template14-date type="text" value={date1temp14} onChange={(e) => setDate1temp14(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[140px] text-right text-gray-600" placeholder="MM/YYYY to MM/YYYY" />
+                  </div>
+                  <input data-template14-company type="text" value={company1temp14} onChange={(e) => setCompany1temp14(e.target.value)} className="font-bold bg-transparent w-full text-sm text-black mb-2" placeholder="Company Name" />
+                  <ul className="list-disc pl-5 space-y-1">
+                    {workdone1temp14.map((w, i) => (
+                      <li key={i}><input data-template14-workbullet type="text" value={w} onChange={(e) => handleWorkdone1temp14Change(i, e.target.value)} className="bg-transparent w-full text-sm text-gray-800" placeholder="Responsibility" /></li>
+                    ))}
+                  </ul>
                 </div>
-                <div className="mt-6">
-                  <h3 className="text-xs font-bold uppercase opacity-80 mb-2">Skills</h3>
-                  <ul className="space-y-1">
-                    {skillstemp14.map((s, i) => (
-                      <li key={i}><input type="text" value={s} onChange={(e) => handleSkillstemp14Change(i, e.target.value)} className="bg-transparent w-full text-sm text-white placeholder-white/50" /></li>
+                <div>
+                  <div className="flex flex-wrap justify-between items-baseline gap-2 mb-1">
+                    <input data-template14-jobtitle type="text" value={post2temp14} onChange={(e) => setPost2temp14(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-black" placeholder="Job Title" />
+                    <input data-template14-date type="text" value={date2temp14} onChange={(e) => setDate2temp14(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[140px] text-right text-gray-600" placeholder="MM/YYYY to MM/YYYY" />
+                  </div>
+                  <input data-template14-company type="text" value={company2temp14} onChange={(e) => setCompany2temp14(e.target.value)} className="font-bold bg-transparent w-full text-sm text-black mb-2" placeholder="Company Name" />
+                  <ul className="list-disc pl-5 space-y-1">
+                    {workdone2temp14.map((w, i) => (
+                      <li key={i}><input data-template14-workbullet type="text" value={w} onChange={(e) => handleWorkdone2temp14Change(i, e.target.value)} className="bg-transparent w-full text-sm text-gray-800" placeholder="Responsibility" /></li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="flex flex-wrap justify-between items-baseline gap-2 mb-1">
+                    <input data-template14-jobtitle type="text" value={post3temp14} onChange={(e) => setPost3temp14(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-black" placeholder="Job Title (optional)" />
+                    <input data-template14-date type="text" value={date3temp14} onChange={(e) => setDate3temp14(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[140px] text-right text-gray-600" placeholder="MM/YYYY to MM/YYYY" />
+                  </div>
+                  <input data-template14-company type="text" value={company3temp14} onChange={(e) => setCompany3temp14(e.target.value)} className="font-bold bg-transparent w-full text-sm text-black mb-2" placeholder="Company Name" />
+                  <ul className="list-disc pl-5 space-y-1">
+                    {workdone3temp14.map((w, i) => (
+                      <li key={i}><input data-template14-workbullet type="text" value={w} onChange={(e) => handleWorkdone3temp14Change(i, e.target.value)} className="bg-transparent w-full text-sm text-gray-800" placeholder="Responsibility" /></li>
                     ))}
                   </ul>
                 </div>
               </div>
-              <div className="w-2/3 p-6 bg-white overflow-y-auto">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">Experience</h3>
-                <input type="text" value={post1temp14} onChange={(e) => setPost1temp14(e.target.value)} className="font-semibold bg-transparent w-full" />
-                <input type="text" value={company1temp14} onChange={(e) => setCompany1temp14(e.target.value)} className="text-gray-600 italic bg-transparent w-full text-sm" />
-                <ul className="list-disc pl-5 mt-2 space-y-1">
-                  {workdone1temp14.map((w, i) => (
-                    <li key={i}><input type="text" value={w} onChange={(e) => handleWorkdone1temp14Change(i, e.target.value)} className="bg-transparent w-full text-sm" /></li>
-                  ))}
-                </ul>
-                <div className="mt-8">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">Education</h3>
-                  <input type="text" value={facultytemp14} onChange={(e) => setFacultytemp14(e.target.value)} className="font-semibold bg-transparent w-full" />
-                  <input type="text" value={universitytemp14} onChange={(e) => setUniversitytemp14(e.target.value)} className="text-gray-600 bg-transparent w-full text-sm" />
-                </div>
+            </div>
+
+            {/* Section: Skills - two-column grid */}
+            <div className="px-8 pt-6">
+              <h3 data-template14-section className={`text-lg font-normal text-black mb-2 ${CV_SEC_H3}`} style={{ fontSize: '1.1rem' }}>Skills</h3>
+              <div data-template14-divider className="h-0.5 w-full mb-4" style={{ backgroundColor: redAccent14 }} />
+              <div data-template14-skills className="grid grid-cols-2 gap-x-8 gap-y-1">
+                {skillstemp14.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="bullet-dot w-1.5 h-1.5 rounded-full bg-black shrink-0" />
+                    <input data-template14-skill type="text" value={s} onChange={(e) => handleSkillstemp14Change(i, e.target.value)} className="bg-transparent w-full text-sm text-gray-800" placeholder="Skill" />
+                  </div>
+                ))}
               </div>
+            </div>
+
+            {/* Section: Education */}
+            <div data-template14-education className="px-8 pt-6 pb-10">
+              <h3 data-template14-section className={`text-lg font-normal text-black mb-2 ${CV_SEC_H3}`} style={{ fontSize: '1.1rem' }}>Education</h3>
+              <div data-template14-divider className="h-0.5 w-full mb-4" style={{ backgroundColor: redAccent14 }} />
+              <input data-template14-edu-degree type="text" value={facultytemp14} onChange={(e) => setFacultytemp14(e.target.value)} className="font-bold bg-transparent w-full text-black mb-1" placeholder="Degree / Major (e.g. J.D.)" />
+              <input data-template14-edu-university type="text" value={universitytemp14} onChange={(e) => setUniversitytemp14(e.target.value)} className="font-bold bg-transparent w-full text-sm text-black mb-4" placeholder="University - Location (e.g. Georgetown University - Washington, DC)" />
+              <input data-template14-edu-degree type="text" value={faculty2temp14} onChange={(e) => setFaculty2temp14(e.target.value)} className="font-bold bg-transparent w-full text-black mb-1" placeholder="Second Degree (optional)" />
+              <input data-template14-edu-university type="text" value={university2temp14} onChange={(e) => setUniversity2temp14(e.target.value)} className="font-bold bg-transparent w-full text-sm text-black" placeholder="University - Location (optional)" />
             </div>
           </div>
         );
 
       case 15:
-        const renderAcadSection = (title, content) => (
-          <div className="mb-8">
-            <div className="border-t border-gray-400 my-3" />
-            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-center text-gray-900 py-2" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>{title}</h3>
-            <div className="border-t border-gray-400 mb-4" />
-            <div className="text-left">{content}</div>
+        const blueBar15 = '#B8D4E8';
+        const renderSection15 = (title, content) => (
+          <div className="mb-6">
+            <div data-template15-sectionbar className="w-full min-h-[3rem] flex items-center justify-center px-4 py-2 box-border text-center" style={{ backgroundColor: blueBar15 }}>
+              <span className="text-sm font-semibold uppercase tracking-wide text-gray-800" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>{title}</span>
+            </div>
+            <div className="mt-4 text-left" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>{content}</div>
           </div>
         );
         return (
-          <div
-            className="w-full max-w-2xl mx-auto p-12"
-            style={{ height: "1100px", backgroundColor: "#faf8f5", fontFamily: 'Georgia, "Times New Roman", serif' }}
-          >
-            {/* Centered header - exact preview match */}
-            <div className="text-center mb-8">
+          <div data-template15 className="w-full max-w-2xl mx-auto p-8 bg-white" style={{ minHeight: "1100px" }}>
+            {/* Header: Name centered, serif */}
+            <div className="text-center mb-4">
               <input
                 type="text"
                 value={nametemp15}
-                onChange={(e) => setNametemp15(e.target.value)}
-                className="text-2xl font-bold bg-transparent w-full text-center uppercase tracking-widest text-gray-900 placeholder-gray-500"
-                placeholder="DR. YOUR NAME"
-                style={{ letterSpacing: "0.15em" }}
+                onChange={(e) => setNametemp15(e.target.value.toUpperCase())}
+                className="text-2xl font-bold bg-transparent w-full text-center uppercase tracking-wide text-gray-900 placeholder-gray-400"
+                placeholder="YOUR NAME"
+                style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
               />
-              <input
-                type="text"
-                value={subtitletemp15}
-                onChange={(e) => setSubtitletemp15(e.target.value)}
-                className="text-xs font-semibold bg-transparent w-full text-center uppercase tracking-[0.25em] text-gray-700 mt-2 placeholder-gray-500"
-                placeholder="ACADEMIC CURRICULUM VITAE"
-              />
-              <div className="mt-4 text-sm text-gray-800 space-y-1" style={{ fontSize: "11px" }}>
-                <div className="flex flex-wrap justify-center gap-x-4 gap-y-1">
-                  <input type="text" value={phonetemp15} onChange={(e) => setPhonetemp15(e.target.value)} className="bg-transparent text-center" placeholder="Phone" />
-                  <span className="text-gray-400">|</span>
-                  <input type="text" value={emailtemp15} onChange={(e) => setEmailtemp15(e.target.value)} className="bg-transparent text-center" placeholder="Email" />
-                  <span className="text-gray-400">|</span>
-                  <input type="text" value={webtemp15} onChange={(e) => setWebtemp15(e.target.value)} className="bg-transparent text-center" placeholder="Web" />
-                </div>
-                <div className="text-center">
-                  <input type="text" value={addresstemp15} onChange={(e) => setAddresstemp15(e.target.value)} className="bg-transparent text-center w-full" placeholder="Address" />
-                </div>
+              <div className="h-px w-full my-3 bg-gray-300" />
+              <div data-template15-contact className="flex flex-row flex-nowrap justify-center items-center gap-x-3 text-sm text-gray-800 w-full overflow-x-auto">
+                <input type="text" value={phonetemp15} onChange={(e) => setPhonetemp15(e.target.value)} className="bg-transparent text-center min-w-[100px] shrink-0 w-auto" placeholder="Phone" />
+                <span className="text-gray-500 shrink-0">|</span>
+                <input type="text" value={emailtemp15} onChange={(e) => setEmailtemp15(e.target.value)} className="bg-transparent text-center min-w-[140px] shrink-0 w-auto" placeholder="Email" />
+                <span className="text-gray-500 shrink-0">|</span>
+                <input type="text" value={locationtemp15} onChange={(e) => setLocationtemp15(e.target.value)} className="bg-transparent text-center min-w-[100px] shrink-0 w-auto" placeholder="Location" />
+                <span className="text-gray-500 shrink-0">|</span>
+                <input type="text" value={linkedintemp15} onChange={(e) => setLinkedintemp15(e.target.value)} className="bg-transparent text-center min-w-[140px] shrink-0 w-auto" placeholder="LinkedIn" />
               </div>
             </div>
-            {renderAcadSection("Education", educationtemp15.map((e, i) => (
-              <input key={i} type="text" value={e} onChange={(ev) => handleEducationtemp15Change(i, ev.target.value)} className="bg-transparent w-full mb-1 text-gray-900 block" style={{ fontSize: "12px" }} />
-            )))}
-            {renderAcadSection("Research Focus", <textarea value={researchfocustemp15} onChange={(e) => setResearchfocustemp15(e.target.value)} className="w-full bg-transparent resize-none text-gray-900" rows={2} style={{ fontSize: "12px" }} />)}
-            {renderAcadSection("Publications", <ul className="list-disc pl-5 space-y-2">{publicationstemp15.map((p, i) => (<li key={i}><input type="text" value={p} onChange={(e) => handlePublicationstemp15Change(i, e.target.value)} className="bg-transparent w-full text-gray-900" style={{ fontSize: "12px" }} /></li>))}</ul>)}
-            {renderAcadSection("Awards & Grants", <ul className="list-disc pl-5 space-y-2">{awardstemp15.map((a, i) => (<li key={i}><input type="text" value={a} onChange={(e) => handleAwardstemp15Change(i, e.target.value)} className="bg-transparent w-full text-gray-900" style={{ fontSize: "12px" }} /></li>))}</ul>)}
-            {renderAcadSection("Selected Presentations", <ul className="list-disc pl-5 space-y-2">{presentationstemp15.map((p, i) => (<li key={i}><input type="text" value={p} onChange={(e) => handlePresentationstemp15Change(i, e.target.value)} className="bg-transparent w-full text-gray-900" style={{ fontSize: "12px" }} /></li>))}</ul>)}
-            {renderAcadSection("Teaching Experience", <>
-              <input type="text" value={teachingtemp15[0]} onChange={(e) => setTeachingtemp15([e.target.value, teachingtemp15[1], teachingtemp15[2]])} className="font-semibold bg-transparent w-full text-gray-900 block" style={{ fontSize: "12px" }} />
-              <input type="text" value={teachingtemp15[1]} onChange={(e) => setTeachingtemp15([teachingtemp15[0], e.target.value, teachingtemp15[2]])} className="bg-transparent w-full text-gray-700 block" style={{ fontSize: "12px" }} />
-              <input type="text" value={teachingtemp15[2]} onChange={(e) => setTeachingtemp15([teachingtemp15[0], teachingtemp15[1], e.target.value])} className="bg-transparent w-full text-gray-600 block" style={{ fontSize: "12px" }} />
-            </>)}
+
+            {renderSection15("SUMMARY", (
+              <textarea value={summarytemp15} onChange={(e) => setSummarytemp15(e.target.value)} onInput={(e) => resizeTextareaOnInput(e, 60)} className="w-full bg-transparent resize-none text-sm text-gray-800 min-h-[60px]" rows={3} placeholder="Professional summary..." />
+            ))}
+
+            {renderSection15("PROFESSIONAL EXPERIENCE", (
+              <div className="space-y-6">
+                <div>
+                  <div className="flex flex-wrap justify-between items-baseline gap-2 mb-0.5">
+                    <input data-template15-jobtitle type="text" value={post1temp15} onChange={(e) => setPost1temp15(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-gray-900 text-sm" placeholder="Job Title" />
+                    <input data-template15-date type="text" value={date1temp15} onChange={(e) => setDate1temp15(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[120px] text-right text-gray-600" placeholder="9/2023 – Present" />
+                  </div>
+                  <input type="text" value={company1temp15} onChange={(e) => setCompany1temp15(e.target.value)} className="italic text-sm bg-transparent w-full text-gray-700 mb-1" placeholder="Company Name" />
+                  <input type="text" value={location1temp15} onChange={(e) => setLocation1temp15(e.target.value)} className="italic text-sm bg-transparent w-full text-gray-600 mb-2" placeholder="Location" />
+                  <ul data-template15-workbullets className="list-disc pl-4 space-y-1 text-sm text-gray-800">
+                    {workdone1temp15.map((w, i) => (
+                      <li key={i}><input data-template15-workbullet type="text" value={w} onChange={(e) => handleWorkdone1temp15Change(i, e.target.value)} className="bg-transparent w-full text-sm" placeholder="Responsibility" /></li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="flex flex-wrap justify-between items-baseline gap-2 mb-0.5">
+                    <input data-template15-jobtitle type="text" value={post2temp15} onChange={(e) => setPost2temp15(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-gray-900 text-sm" placeholder="Job Title" />
+                    <input data-template15-date type="text" value={date2temp15} onChange={(e) => setDate2temp15(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[120px] text-right text-gray-600" placeholder="6/2020 – 8/2023" />
+                  </div>
+                  <input type="text" value={company2temp15} onChange={(e) => setCompany2temp15(e.target.value)} className="italic text-sm bg-transparent w-full text-gray-700 mb-1" placeholder="Company Name" />
+                  <input type="text" value={location2temp15} onChange={(e) => setLocation2temp15(e.target.value)} className="italic text-sm bg-transparent w-full text-gray-600 mb-2" placeholder="Location" />
+                  <ul data-template15-workbullets className="list-disc pl-4 space-y-1 text-sm text-gray-800">
+                    {workdone2temp15.map((w, i) => (
+                      <li key={i}><input data-template15-workbullet type="text" value={w} onChange={(e) => handleWorkdone2temp15Change(i, e.target.value)} className="bg-transparent w-full text-sm" placeholder="Responsibility" /></li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+
+            {renderSection15("EDUCATION", (
+              <div data-template15-education>
+                <div className="flex flex-wrap justify-between items-baseline gap-2 mb-0.5">
+                  <input data-template15-edu-university type="text" value={universitytemp15} onChange={(e) => setUniversitytemp15(e.target.value)} className="font-bold bg-transparent flex-1 min-w-0 text-gray-900 text-sm" placeholder="University Name" />
+                  <input data-template15-edu-date type="text" value={dateedutemp15} onChange={(e) => setDateedutemp15(e.target.value)} className="text-sm bg-transparent shrink-0 min-w-[80px] text-right text-gray-600" placeholder="5/2022" />
+                </div>
+                <input data-template15-edu-location type="text" value={locationedutemp15} onChange={(e) => setLocationedutemp15(e.target.value)} className="italic text-sm bg-transparent w-full text-gray-600 mb-1" placeholder="City, State" />
+                <input data-template15-edu-degree type="text" value={degreetemp15} onChange={(e) => setDegreetemp15(e.target.value)} className="text-sm bg-transparent w-full text-gray-800" placeholder="Bachelor of Science" />
+                <input data-template15-edu-major type="text" value={majortemp15} onChange={(e) => setMajortemp15(e.target.value)} className="text-sm bg-transparent w-full text-gray-700" placeholder="Major" />
+              </div>
+            ))}
+
+            {renderSection15("SKILLS", (
+              <div className="text-sm text-gray-800 space-y-2">
+                <div>
+                  <span className="font-bold">Technical Skills: </span>
+                  <input type="text" value={technicalSkillstemp15} onChange={(e) => setTechnicalSkillstemp15(e.target.value)} className="bg-transparent flex-1 inline w-[calc(100%-130px)]" placeholder="Skill 1, Skill 2, Skill 3" />
+                </div>
+                <div>
+                  <span className="font-bold">Soft Skills: </span>
+                  <input type="text" value={softSkillstemp15} onChange={(e) => setSoftSkillstemp15(e.target.value)} className="bg-transparent flex-1 inline w-[calc(100%-100px)]" placeholder="Leadership, Communication" />
+                </div>
+                <div>
+                  <span className="font-bold">Languages: </span>
+                  <input type="text" value={languagesTemp15} onChange={(e) => setLanguagesTemp15(e.target.value)} className="bg-transparent flex-1 inline w-[calc(100%-95px)]" placeholder="English, Spanish" />
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
+      case 16:
+        const renderSection16 = (value, onChange, children) => (
+          <div className="mb-5">
+            <div className="border-t mt-4 mb-3" style={{ borderColor: '#d4d4d4', borderWidth: '1px' }} />
+            <div className="flex min-h-[3rem] w-full items-center justify-center box-border py-2">
+              <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="text-xs font-bold uppercase tracking-[0.35em] text-center w-full bg-transparent text-gray-900 leading-normal" />
+            </div>
+            <div className="border-t mt-2 mb-3" style={{ borderColor: '#d4d4d4', borderWidth: '1px' }} />
+            {children}
+          </div>
+        );
+        return (
+          <div data-template16 className="w-full max-w-3xl mx-auto p-8 bg-white font-sans">
+            <div className="text-center py-4 mb-2">
+              <input
+                type="text"
+                value={nametemp16}
+                onChange={(e) => setNametemp16(e.target.value.toUpperCase())}
+                className="text-3xl font-bold uppercase tracking-[0.2em] bg-transparent w-full text-center text-black placeholder-gray-400"
+                placeholder="YOUR NAME"
+              />
+            </div>
+            <div data-template16-contact className="-mx-8 w-[calc(100%+4rem)] px-8 py-3 mb-4" style={{ backgroundColor: '#EBEBEB' }}>
+              <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-1 text-sm text-gray-800">
+                <input type="text" value={locationtemp16} onChange={(e) => setLocationtemp16(e.target.value)} className="bg-transparent text-center min-w-[80px]" placeholder="Location" />
+                <span className="text-gray-500">|</span>
+                <input type="text" value={phonetemp16} onChange={(e) => setPhonetemp16(e.target.value)} className="bg-transparent text-center min-w-[110px]" placeholder="Phone" />
+                <span className="text-gray-500">|</span>
+                <input type="text" value={emailtemp16} onChange={(e) => setEmailtemp16(e.target.value)} className="bg-transparent text-center min-w-[140px]" placeholder="Email" />
+                <span className="text-gray-500">|</span>
+                <input type="text" value={linkedintemp16} onChange={(e) => setLinkedintemp16(e.target.value)} className="bg-transparent text-center min-w-[140px]" placeholder="LinkedIn" />
+              </div>
+            </div>
+            <div className="border-t border-gray-300 mb-6" style={{ borderColor: '#d4d4d4' }} />
+            {renderSection16(profilelabeltemp16, setProfilelabeltemp16, (
+              <div className="w-full">
+                <RichTextBlock
+                  value={profiletemp16}
+                  onChange={setProfiletemp16}
+                  data-template16-profile
+                  className="text-sm bg-transparent w-full max-w-full leading-relaxed text-gray-800 text-justify"
+                  minHeight="60px"
+                />
+              </div>
+            ))}
+            {renderSection16(skillslabeltemp16, setSkillslabeltemp16, (
+              <div className="grid grid-cols-3 gap-x-6 gap-y-2 text-sm text-gray-700">
+                {skillstemp16.slice(0, 9).map((s, i) => (
+                  <input key={i} type="text" value={s} onChange={(e) => handelskillstemp16(i, e.target.value)} className="bg-transparent w-full" />
+                ))}
+              </div>
+            ))}
+            {renderSection16(worklabeltemp16, setWorklabeltemp16, (
+              <div data-template16-work className="flex flex-col gap-6 w-full">
+                <div data-template16-workentry className="flex flex-col w-full min-w-0">
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      <input type="text" value={company1temp16} onChange={(e) => setCompany1temp16(e.target.value)} className="font-bold bg-transparent w-full text-gray-900 text-sm" placeholder="Company" />
+                      <input type="text" value={post1temp16} onChange={(e) => setPost1temp16(e.target.value)} className="font-bold bg-transparent w-full text-gray-900 text-sm mt-0.5" placeholder="Job Title" />
+                    </div>
+                    <div className="text-right shrink-0">
+                      <input type="text" value={date1temp16} onChange={(e) => setDate1temp16(e.target.value)} className="font-bold bg-transparent text-right block text-gray-900 text-sm" placeholder="Date" />
+                      <input type="text" value={location1temp16} onChange={(e) => setLocation1temp16(e.target.value)} className="bg-transparent text-right block text-sm text-gray-600 mt-0.5" placeholder="Location" />
+                    </div>
+                  </div>
+                  <div className="w-full min-w-0 mt-2">
+                    <RichTextBlock value={workdesc1temp16} onChange={setWorkdesc1temp16} data-template16-workdesc className="text-sm bg-transparent w-full text-gray-700 leading-relaxed" minHeight="30px" />
+                  </div>
+                  <ul className="mt-2 pl-5 list-none text-sm text-gray-700 space-y-1 w-full min-w-0">
+                    {workdone1temp16.map((item, i) => (
+                      <li key={i}>
+                        <RichTextBlock value={item} onChange={(v) => handleworkdone1temp16(i, v)} className="inline bg-transparent" minHeight="20px" />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div data-template16-workentry className="flex flex-col w-full min-w-0">
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      <input type="text" value={company2temp16} onChange={(e) => setCompany2temp16(e.target.value)} className="font-bold bg-transparent w-full text-gray-900 text-sm" placeholder="Company" />
+                      <input type="text" value={post2temp16} onChange={(e) => setPost2temp16(e.target.value)} className="font-bold bg-transparent w-full text-gray-900 text-sm mt-0.5" placeholder="Job Title" />
+                    </div>
+                    <div className="text-right shrink-0">
+                      <input type="text" value={date2temp16} onChange={(e) => setDate2temp16(e.target.value)} className="font-bold bg-transparent text-right block text-gray-900 text-sm" placeholder="Date" />
+                      <input type="text" value={location2temp16} onChange={(e) => setLocation2temp16(e.target.value)} className="bg-transparent text-right block text-sm text-gray-600 mt-0.5" placeholder="Location" />
+                    </div>
+                  </div>
+                  <div className="w-full min-w-0 mt-2">
+                    <RichTextBlock value={workdesc2temp16} onChange={setWorkdesc2temp16} data-template16-workdesc className="text-sm bg-transparent w-full text-gray-700 leading-relaxed" minHeight="30px" />
+                  </div>
+                  <ul className="mt-2 pl-5 list-none text-sm text-gray-700 space-y-1 w-full min-w-0">
+                    {workdone2temp16.map((item, i) => (
+                      <li key={i}>
+                        <RichTextBlock value={item} onChange={(v) => handleworkdone2temp16(i, v)} className="inline bg-transparent" minHeight="20px" />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+            {renderSection16(educationlabeltemp16, setEducationlabeltemp16, (
+              <div className="flex justify-between items-start gap-4 w-full min-w-0">
+                <div>
+                  <input type="text" value={universitytemp16} onChange={(e) => setUniversitytemp16(e.target.value)} className="font-bold bg-transparent w-full text-gray-900 text-sm" placeholder="Institution" />
+                  <input type="text" value={facultytemp16} onChange={(e) => setFacultytemp16(e.target.value)} className="bg-transparent w-full text-gray-700 text-sm mt-0.5" placeholder="Degree" />
+                </div>
+                <div className="text-right shrink-0">
+                  <input type="text" value={year16temp16} onChange={(e) => setYear16temp16(e.target.value)} className="font-bold bg-transparent text-right block text-gray-900 text-sm" placeholder="Year" />
+                  <input type="text" value={location16temp16} onChange={(e) => setLocation16temp16(e.target.value)} className="bg-transparent text-right block text-sm text-gray-600 mt-0.5" placeholder="Location" />
+                </div>
+              </div>
+            ))}
           </div>
         );
 
@@ -4533,7 +6449,7 @@ const Fill_cv = () => {
   };
 
   // No template selected (e.g. direct URL, refresh, or back navigation)
-  const hasValidTemplate = templateId && !Number.isNaN(templateId) && templateId >= 1 && templateId <= 15;
+  const hasValidTemplate = templateId && !Number.isNaN(templateId) && templateId >= 1 && templateId <= 16;
   if (!hasValidTemplate) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
@@ -4566,73 +6482,224 @@ const Fill_cv = () => {
   <div>
   <nav className="fixed top-0 left-0 right-0 w-full h-14 bg-slate-800 shadow-md z-50">
     <img src={Logo} className="h-[70px] w-52 ml-20 mt-[-10px] absolute object-contain" alt="Logo" />
-    <p className="text-slate-100 ml-[600px] font-medium text-lg mt-3 absolute">Click anywhere to edit your CV</p>
-    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 text-sm font-medium">
-      {TEMPLATE_NAMES[templateId] || `Template ${templateId}`}
-    </span>
+    <p className="text-slate-100 ml-[600px] font-medium text-lg mt-3 absolute hidden xl:block pointer-events-none">Click anywhere to edit your CV</p>
+    <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 sm:gap-3 max-w-[min(52vw,calc(100%-12rem))] sm:max-w-none justify-end">
+      {enhancedResume && (
+        <button
+          type="button"
+          onClick={handleCopyToTemplate}
+          disabled={isApplyingToTemplate}
+          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
+          title="Copy sidebar content into the CV fields"
+        >
+          {isApplyingToTemplate ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span className="hidden sm:inline">Working…</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span className="hidden sm:inline">Copy to template</span>
+              <span className="sm:hidden">Copy</span>
+            </>
+          )}
+        </button>
+      )}
+      <span className="text-slate-300 text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-[11rem] text-right">
+        {TEMPLATE_NAMES[templateId] || `Template ${templateId}`}
+      </span>
+    </div>
   </nav>
   </div>
 
       {enhancedResume && (
-        <div className="fixed left-4 top-20 z-40 max-w-sm">
+        <div
+          className={`fixed z-40 flex flex-col gap-2 transition-all duration-200 ${
+            showEnhancedRef
+              ? 'lg:left-4 lg:top-[4.5rem] lg:w-[min(22rem,calc(100vw-2rem))] lg:h-[calc(100vh-4.75rem)] max-lg:inset-x-3 max-lg:bottom-3 max-lg:top-auto max-lg:max-h-[min(52vh,480px)] max-lg:rounded-2xl max-lg:shadow-2xl'
+              : 'lg:left-4 lg:top-[4.5rem] max-lg:left-3 max-lg:bottom-20 w-auto'
+          }`}
+        >
           <button
+            type="button"
             onClick={() => setShowEnhancedRef(!showEnhancedRef)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold shadow-lg hover:from-blue-700 hover:to-purple-700"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold shadow-lg hover:from-blue-700 hover:to-purple-700 justify-center shrink-0"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 8.414V19a2 2 0 01-2 2z" />
             </svg>
-            {showEnhancedRef ? 'Hide' : 'Show'} Enhanced CV Reference
+            <span className="text-sm">{showEnhancedRef ? 'Hide' : 'Show'} CV reference</span>
           </button>
           {showEnhancedRef && (
-            <div className="mt-2 p-4 bg-white rounded-xl shadow-lg border border-slate-200 max-h-[70vh] overflow-y-auto">
-              <p className="text-sm text-green-600 font-medium mb-2">✓ Content auto-filled</p>
-              <p className="text-xs text-gray-500 mb-2">Edit below, then use Copy or Download:</p>
-              <textarea
-                value={editableRefContent}
-                onChange={(e) => setEditableRefContent(e.target.value)}
-                rows={14}
-                className="w-full p-3 text-sm border border-gray-200 rounded-lg bg-white resize-none focus:ring-2 focus:ring-blue-400"
-                placeholder="Paste or edit your CV content here..."
-              />
-              <div className="mt-3 flex flex-col gap-2">
-                <div className="flex gap-2">
+            <div className="flex flex-col flex-1 min-h-0 bg-white rounded-xl shadow-xl border border-slate-200/80 overflow-hidden max-lg:rounded-2xl max-lg:min-h-0">
+              {/* Always visible: primary action + status */}
+              <div className="shrink-0 p-3 border-b border-slate-100 bg-gradient-to-b from-emerald-50/80 to-white space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold">✓</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">Enhanced CV loaded</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-snug">
+                      Edit the text below, then copy into your template (~2–3s).
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyToTemplate}
+                  disabled={isApplyingToTemplate}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-3 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
+                >
+                  {isApplyingToTemplate ? (
+                    <>
+                      <svg className="w-5 h-5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden>
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Copying to template…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Copy to template
+                    </>
+                  )}
+                </button>
+                {applyFeedback && (
+                  <p className={`text-xs font-medium ${applyFeedback.startsWith('Content applied') ? 'text-green-700' : 'text-amber-700'}`}>
+                    {applyFeedback}
+                  </p>
+                )}
+              </div>
+
+              {/* Scroll: preview + editor */}
+              <div className="flex-1 min-h-0 overflow-y-auto p-3">
+                <EnhancedResumeOrganizedPreview text={editableRefContent} />
+                <div className="mt-3">
+                  <label htmlFor="enhanced-ref-raw" className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 block mb-1.5">
+                    Full text (edit here)
+                  </label>
+                  <textarea
+                    id="enhanced-ref-raw"
+                    value={editableRefContent}
+                    onChange={(e) => setEditableRefContent(e.target.value)}
+                    rows={6}
+                    className="w-full p-3 text-sm text-slate-800 border border-slate-200 rounded-lg bg-slate-50/80 resize-y min-h-[120px] focus:ring-2 focus:ring-indigo-400 focus:border-indigo-300 focus:bg-white leading-relaxed font-mono"
+                    placeholder="Paste or edit your CV content here..."
+                    spellCheck
+                    style={{ wordBreak: 'break-word' }}
+                  />
+                </div>
+              </div>
+
+              {/* Sticky footer: tidy / clipboard / reset */}
+              <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 space-y-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
-                    onClick={handleCopyRefContent}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                    type="button"
+                    onClick={() => {
+                      const tidied = (editableRefContent || '')
+                        .replace(/\r\n/g, '\n')
+                        .split('\n')
+                        .map((l) => l.trimEnd())
+                        .join('\n')
+                        .replace(/\n{4,}/g, '\n\n\n')
+                        .trim();
+                      setEditableRefContent(tidied);
+                    }}
+                    className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-white shrink-0"
+                    title="Remove extra blank lines"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    {copied ? 'Copied!' : 'Copy content'}
+                    Tidy spacing
                   </button>
                   <button
+                    type="button"
+                    onClick={handleCopyRefContent}
+                    className="flex-1 min-w-[7rem] flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                  >
+                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    {copied ? 'Copied!' : 'Copy text'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setEditableRefContent(enhancedResume)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-white bg-white"
                   >
                     Reset
                   </button>
                 </div>
-                <button
-                  onClick={() => applyEditedContentToTemplate(editableRefContent)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Apply to template
-                </button>
-                <p className="text-xs text-gray-500">Apply updates the template. Then use Download.</p>
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Use <strong>Copy to template</strong> at the top of this panel, in the header bar, or in the formatting toolbar.
+                </p>
               </div>
             </div>
           )}
         </div>
       )}
 
+      {isApplyingToTemplate && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/40 flex items-center justify-center p-4" role="status" aria-live="polite">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 px-8 py-7 max-w-sm w-full flex flex-col items-center text-center gap-3">
+            <svg className="w-12 h-12 text-emerald-600 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <p className="text-lg font-bold text-slate-800">Copying to your template</p>
+            <p className="text-sm text-slate-600">Filling in your CV fields… this takes about 2–3 seconds.</p>
+          </div>
+        </div>
+      )}
+
       {/* {renderTemplate()} */}
 
-      <FormattingToolbar />
-      <div className="px-4 pt-28 pb-6 bg-slate-50 min-h-screen">
+      <FormattingToolbar
+        layoutOffsetClass={
+          enhancedResume && showEnhancedRef ? 'lg:pl-[22rem] xl:pl-[24rem]' : ''
+        }
+        extraActions={
+          enhancedResume ? (
+            <button
+              type="button"
+              onClick={handleCopyToTemplate}
+              disabled={isApplyingToTemplate}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm border border-emerald-700/30"
+            >
+              {isApplyingToTemplate ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Working…
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Copy to template
+                </>
+              )}
+            </button>
+          ) : null
+        }
+      />
+      <div
+        className={`px-4 pt-28 pb-6 bg-slate-50 min-h-screen transition-[padding] duration-200 ${
+          enhancedResume && showEnhancedRef
+            ? 'lg:pl-[22rem] xl:pl-[24rem] max-lg:pb-[min(46vh,360px)]'
+            : ''
+        }`}
+      >
         <div 
           ref={cvRef} 
           className="bg-white mx-auto antialiased"
@@ -4651,8 +6718,26 @@ const Fill_cv = () => {
           </div>
         </div>
 
-        {/* Enhanced Download Section */}
-        <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 flex flex-col gap-3 items-end max-w-[90vw] md:max-w-none">
+        {/* Enhanced Download Section — lift on small screens when bottom CV reference is open */}
+        <div
+          className={`fixed z-50 flex flex-col gap-3 items-end max-w-[90vw] md:max-w-none right-4 md:right-6 transition-[bottom] duration-200 ${
+            enhancedResume && showEnhancedRef
+              ? 'bottom-[min(calc(48vh+1rem),26rem)] lg:bottom-6'
+              : 'bottom-4 md:bottom-6'
+          }`}
+        >
+          {/* Reset Template Button - visible for template 1 */}
+          {templateId === 1 && (
+            <button
+              onClick={resetTemplate1}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold shadow-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reset template
+            </button>
+          )}
           {/* Download Options */}
           <div className={`bg-white rounded-xl shadow-lg border border-slate-100 p-4 md:p-5 flex flex-col gap-3 transition-all duration-300 ${
             isDownloading ? 'opacity-75 pointer-events-none' : ''
@@ -4664,29 +6749,6 @@ const Fill_cv = () => {
               <span className="font-semibold text-gray-800">Download Options</span>
             </div>
             
-            <button
-              onClick={() => handleDownload('pdf')}
-              disabled={isDownloading}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full md:min-w-[180px] justify-center text-sm md:text-base"
-            >
-              {isDownloading && downloadProgress < 100 ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Generating PDF...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
-                  Download as PDF
-                </>
-              )}
-            </button>
-
             <button
               onClick={() => handleDownload('pdf', true)}
               disabled={isDownloading}

@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getApiUrl } from '../../config/api';
 import API_CONFIG from '../../config/api';
 
+const PRODUCT_USE_IN_TEMPLATE = 'useInTemplate';
+const PRODUCT_PREMIUM_TEMPLATES = 'premiumTemplates';
+
 const Payment = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { upgradeToPremium } = useAuth();
+  const { upgradeToPremium, upgradeUseInTemplate } = useAuth();
   const redirectMessage = location.state?.message || '';
-  const [selectedPlan, setSelectedPlan] = useState('premium');
+  const productFromState = location.state?.product;
+  const [selectedPlan, setSelectedPlan] = useState(productFromState || PRODUCT_USE_IN_TEMPLATE);
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [paymentError, setPaymentError] = useState('');
   const [cardData, setCardData] = useState({
@@ -23,54 +27,50 @@ const Payment = () => {
 
   const plans = [
     {
-      id: 'basic',
-      name: 'Basic',
-      price: 9.99,
-      period: 'month',
+      id: PRODUCT_USE_IN_TEMPLATE,
+      name: 'Use in Template',
+      price: 500,
+      period: 'one-time',
+      currency: 'NRS',
       features: [
-        '5 Resume Templates',
-        'Basic PDF Export',
-        'Email Support',
-        '1 Resume at a time'
-      ],
-      popular: false,
-      color: 'from-gray-500 to-gray-600'
-    },
-    {
-      id: 'premium',
-      name: 'Premium',
-      price: 19.99,
-      period: 'month',
-      features: [
-        'All 12 Resume Templates',
-        'High-Quality PDF Export',
-        'AI-Powered Grading',
-        'Priority Support',
-        'Unlimited Resumes',
-        'Job Match Scoring',
-        'ATS Optimization'
+        'Use your AI-enhanced CV in any template',
+        'One-click transfer to template builder',
+        'Perfect for graded & improved resumes'
       ],
       popular: true,
-      color: 'from-blue-500 to-purple-600'
+      color: 'from-purple-500 to-pink-600'
     },
     {
-      id: 'pro',
-      name: 'Professional',
-      price: 29.99,
-      period: 'month',
+      id: PRODUCT_PREMIUM_TEMPLATES,
+      name: 'Premium Templates',
+      price: 250,
+      period: 'one-time',
+      currency: 'NRS',
       features: [
-        'Everything in Premium',
-        'Cover Letter Builder',
-        'LinkedIn Profile Optimizer',
-        'Interview Prep Tools',
-        'Career Coaching Sessions',
-        'Resume Review by Experts',
-        'Custom Branding'
+        'Access to 6 premium templates (2, 5, 7, 11, 14, 16)',
+        'Classic Elegant, Minimalist, Bold Creative',
+        'Executive Two-Column, Classic Red Accent, Professional Clean'
       ],
       popular: false,
-      color: 'from-purple-500 to-pink-600'
+      color: 'from-blue-500 to-indigo-600'
     }
   ];
+
+  useEffect(() => {
+    if (productFromState && (productFromState === PRODUCT_USE_IN_TEMPLATE || productFromState === PRODUCT_PREMIUM_TEMPLATES)) {
+      setSelectedPlan(productFromState);
+    }
+  }, [productFromState]);
+
+  const applyPaymentSuccess = (productId) => {
+    if (productId === PRODUCT_USE_IN_TEMPLATE) {
+      localStorage.setItem('useInTemplateAccess', 'true');
+      upgradeUseInTemplate();
+    } else {
+      localStorage.setItem('isPremium', 'true');
+      upgradeToPremium();
+    }
+  };
 
   const handleCardInputChange = (e) => {
     const { name, value } = e.target;
@@ -101,8 +101,8 @@ const Payment = () => {
     setPaymentError('');
     setIsProcessing(true);
     try {
-      const amount = Number(selectedPlanData.price);
-      const tax_amount = Math.round(amount * 0.1 * 100) / 100;
+      const amount = Number(selectedPlanData.price); // NRS (Nepalese Rupees)
+      const tax_amount = 0; // No tax for simplicity, or set if required
       const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.ESEWA_INITIATE), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -119,6 +119,7 @@ const Payment = () => {
       }
       const { form_url, form_data } = await res.json();
       if (!form_url || !form_data) throw new Error('Invalid response from eSewa');
+      sessionStorage.setItem('paymentProduct', selectedPlan);
       const form = document.createElement('form');
       form.method = 'POST';
       form.action = form_url;
@@ -141,7 +142,7 @@ const Payment = () => {
     setPaymentError('');
     setIsProcessing(true);
     try {
-      const amountPaisa = Math.round(Number(selectedPlanData.price) * 100);
+      const amountPaisa = Math.round(Number(selectedPlanData.price) * 100); // NRS 250 = 25000 paisa
       const purchase_order_id = `order-${Date.now()}`;
       const res = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.KHALTI_INITIATE), {
         method: 'POST',
@@ -160,6 +161,7 @@ const Payment = () => {
       }
       const { payment_url } = await res.json();
       if (!payment_url) throw new Error('Invalid response from Khalti');
+      sessionStorage.setItem('paymentProduct', selectedPlan);
       window.location.href = payment_url;
     } catch (err) {
       setPaymentError(err.message || 'Khalti payment could not be started.');
@@ -171,12 +173,20 @@ const Payment = () => {
     e.preventDefault();
     setPaymentError('');
     setIsProcessing(true);
-    // Stripe/card: simulate for now; replace with Stripe API when backend is ready
     setTimeout(() => {
+      applyPaymentSuccess(selectedPlan);
       setIsProcessing(false);
-      upgradeToPremium();
-      alert('Payment successful! You now have access to premium features and templates.');
-      navigate('/choose_templates');
+      const msg = selectedPlan === PRODUCT_USE_IN_TEMPLATE
+        ? 'Payment successful! You can now use your enhanced CV in templates.'
+        : 'Payment successful! You now have access to premium templates.';
+      alert(msg);
+      if (selectedPlan === PRODUCT_USE_IN_TEMPLATE) {
+        const enhancedResume = sessionStorage.getItem('pendingEnhancedResume') || '';
+        sessionStorage.removeItem('pendingEnhancedResume');
+        navigate('/choose_templates', { state: enhancedResume ? { enhancedResume } : {} });
+      } else {
+        navigate('/choose_templates');
+      }
     }, 2000);
   };
 
@@ -206,7 +216,7 @@ const Payment = () => {
         <div className="grid lg:grid-cols-3 gap-8 mb-12">
           {/* Pricing Plans */}
           <div className="lg:col-span-2">
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-1 max-w-md mx-auto gap-6">
               {plans.map((plan) => (
                 <div
                   key={plan.id}
@@ -229,7 +239,7 @@ const Payment = () => {
                     <h3 className="text-2xl font-bold text-gray-800 mb-2">{plan.name}</h3>
                     <div className="flex items-baseline justify-center gap-1">
                       <span className="text-4xl font-bold bg-gradient-to-r bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
-                        ${plan.price}
+                        NRS {plan.price}
                       </span>
                       <span className="text-gray-500">/{plan.period}</span>
                     </div>
@@ -262,17 +272,17 @@ const Payment = () => {
               <div className="space-y-4 mb-6">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">{selectedPlanData.name} Plan</span>
-                  <span className="font-semibold text-gray-800">${selectedPlanData.price}</span>
+                  <span className="font-semibold text-gray-800">NRS {selectedPlanData.price}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Billing Period</span>
-                  <span className="text-gray-800">Monthly</span>
+                  <span className="text-gray-600">Payment</span>
+                  <span className="text-gray-800">One-time</span>
                 </div>
                 <div className="border-t pt-4">
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-bold text-gray-800">Total</span>
                     <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                      ${selectedPlanData.price}
+                      NRS {selectedPlanData.price}
                     </span>
                   </div>
                 </div>
@@ -508,7 +518,7 @@ const Payment = () => {
                       Processing Payment...
                     </span>
                   ) : (
-                    `Pay $${selectedPlanData.price} / ${selectedPlanData.period}`
+                    `Pay NRS ${selectedPlanData.price}`
                   )}
                 </button>
               </form>
@@ -526,10 +536,19 @@ const Payment = () => {
                     e.preventDefault();
                     setIsProcessing(true);
                     setTimeout(() => {
+                      applyPaymentSuccess(selectedPlan);
                       setIsProcessing(false);
-                      upgradeToPremium();
-                      alert('Payment successful! You now have access to premium features and templates.');
-                      navigate('/choose_templates');
+                      const msg = selectedPlan === PRODUCT_USE_IN_TEMPLATE
+                        ? 'Payment successful! You can now use your enhanced CV in templates.'
+                        : 'Payment successful! You now have access to premium templates.';
+                      alert(msg);
+                      if (selectedPlan === PRODUCT_USE_IN_TEMPLATE) {
+                        const enhancedResume = sessionStorage.getItem('pendingEnhancedResume') || '';
+                        sessionStorage.removeItem('pendingEnhancedResume');
+                        navigate('/choose_templates', { state: enhancedResume ? { enhancedResume } : {} });
+                      } else {
+                        navigate('/choose_templates');
+                      }
                     }, 2000);
                   }}
                   disabled={isProcessing}
@@ -558,10 +577,19 @@ const Payment = () => {
                     e.preventDefault();
                     setIsProcessing(true);
                     setTimeout(() => {
+                      applyPaymentSuccess(selectedPlan);
                       setIsProcessing(false);
-                      upgradeToPremium();
-                      alert('Payment successful! You now have access to premium features and templates.');
-                      navigate('/choose_templates');
+                      const msg = selectedPlan === PRODUCT_USE_IN_TEMPLATE
+                        ? 'Payment successful! You can now use your enhanced CV in templates.'
+                        : 'Payment successful! You now have access to premium templates.';
+                      alert(msg);
+                      if (selectedPlan === PRODUCT_USE_IN_TEMPLATE) {
+                        const enhancedResume = sessionStorage.getItem('pendingEnhancedResume') || '';
+                        sessionStorage.removeItem('pendingEnhancedResume');
+                        navigate('/choose_templates', { state: enhancedResume ? { enhancedResume } : {} });
+                      } else {
+                        navigate('/choose_templates');
+                      }
                     }, 2000);
                   }}
                   disabled={isProcessing}
@@ -583,7 +611,7 @@ const Payment = () => {
                   <span className="text-4xl font-bold text-green-600">eSewa</span>
                 </div>
                 <p className="text-gray-600 mb-6">You will be redirected to eSewa to complete your payment securely.</p>
-                <p className="text-sm text-gray-500 mb-6">Amount: ${selectedPlanData.price} ({selectedPlanData.name} Plan)</p>
+                <p className="text-sm text-gray-500 mb-6">Amount: NRS {selectedPlanData.price} ({selectedPlanData.name} Plan)</p>
                 <button
                   type="button"
                   onClick={payWithEsewa}
@@ -616,7 +644,7 @@ const Payment = () => {
                   <span className="text-4xl font-bold text-purple-600">Khalti</span>
                 </div>
                 <p className="text-gray-600 mb-6">You will be redirected to Khalti to complete your payment securely.</p>
-                <p className="text-sm text-gray-500 mb-6">Amount: ${selectedPlanData.price} ({selectedPlanData.name} Plan)</p>
+                <p className="text-sm text-gray-500 mb-6">Amount: NRS {selectedPlanData.price} ({selectedPlanData.name} Plan)</p>
                 <button
                   type="button"
                   onClick={payWithKhalti}

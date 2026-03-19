@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 /**
  * MS Word-style formatting toolbar. Sticky at top. Applies to selected text in contenteditable areas.
  */
-const FormattingToolbar = () => {
+const FormattingToolbar = ({ layoutOffsetClass = '', extraActions = null }) => {
   const [hasSelection, setHasSelection] = useState(false);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ const FormattingToolbar = () => {
   const selectActive = hasSelection ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 text-gray-400 cursor-not-allowed";
 
   return (
-    <div className="fixed top-14 left-0 right-0 z-[60] bg-slate-50 border-b border-slate-200 shadow-sm">
+    <div className={`fixed top-14 left-0 right-0 z-[60] bg-slate-50 border-b border-slate-200 shadow-sm transition-[padding] duration-200 ${layoutOffsetClass}`}>
       <div className="max-w-4xl mx-auto px-4 py-2">
         <div className="flex items-center gap-4 flex-wrap">
           {/* Font style group */}
@@ -134,6 +134,11 @@ const FormattingToolbar = () => {
             </svg>
             Clear
           </button>
+          {extraActions ? (
+            <div className="w-full sm:w-auto flex justify-center sm:justify-end sm:ml-auto shrink-0 basis-full sm:basis-auto pt-2 border-t border-slate-200/80 sm:border-0 sm:pt-0">
+              {extraActions}
+            </div>
+          ) : null}
         </div>
         {!hasSelection && (
           <p className="text-xs text-slate-400 mt-1.5">Select text in the CV to format it</p>
