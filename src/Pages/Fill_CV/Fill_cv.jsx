@@ -6,15 +6,310 @@ import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import Logo from "../assets/logoo.png";
 import { useAuth } from "../../context/AuthContext";
-import { parseEnhancedResumeToStructuredData } from "../../utils/parseEnhancedResume";
+import { parseEnhancedResumeToStructuredData, looksLikeDateRangeLine } from "../../utils/parseEnhancedResume";
 import FormattingToolbar from "../../components/FormattingToolbar";
 import RichTextBlock from "../../components/RichTextBlock";
 
 const stripHtml = (html) => {
   if (!html || typeof html !== 'string') return '';
+  const normalized = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ');
   const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return tmp.textContent || tmp.innerText || '';
+  tmp.innerHTML = normalized;
+  return (tmp.textContent || tmp.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
+};
+
+/** Plain text → simple HTML for RichTextBlock (contenteditable expects HTML) */
+const plainToRichHtml = (text) => {
+  if (!text || typeof text !== 'string') return '';
+  const t = text.trim();
+  if (!t) return '';
+  if (/<[a-z][\s\S]*>/i.test(t)) return t;
+  return t
+    .split(/\n\n+/)
+    .map((p) => `<p>${p.replace(/\n/g, '<br />')}</p>`)
+    .join('');
+};
+
+const cleanJobHeaderPart = (s) => {
+  if (!s || typeof s !== 'string') return '';
+  return s.replace(/^[,;:\s–—\-]+|[,;:\s–—\-]+$/g, '').trim();
+};
+
+const T3_SECTION_ALIASES = {
+  summary: ["professional summary", "executive summary", "summary", "profile", "about", "about me"],
+  skills: ["skills", "technical skills", "competencies", "expertise", "key skills"],
+  highlights: ["highlights", "key highlights", "core strengths"],
+  experience: ["work experience", "professional experience", "experience", "employment"],
+  awards: ["awards", "achievements", "certifications"],
+  education: ["education", "academic", "qualification", "qualifications"],
+};
+
+const normalizeT3Header = (line) => {
+  const h = (line || "").toLowerCase().replace(/[:\s]+$/g, "").trim();
+  for (const [key, aliases] of Object.entries(T3_SECTION_ALIASES)) {
+    if (aliases.some((a) => h === a || h.startsWith(`${a} `))) return key;
+  }
+  return null;
+};
+
+const stripListPrefix = (s) => String(s || "").replace(/^[-*•▪\d.)\s]+/, "").trim();
+
+const splitTemplate3Sections = (text) => {
+  const out = { intro: [], summary: [], skills: [], highlights: [], experience: [], awards: [], education: [] };
+  let current = "intro";
+  (text || "").split("\n").forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    const hdr = normalizeT3Header(line);
+    if (hdr) {
+      current = hdr;
+      return;
+    }
+    out[current].push(line);
+  });
+  return out;
+};
+
+const isTemplate3NoiseLine = (line) => {
+  const t = cleanJobHeaderPart(stripListPrefix(line || "")).toLowerCase();
+  if (!t) return true;
+  if (/^[,.;:|/\\-]+$/.test(t)) return true;
+  if (looksLikeDateRangeLine(t)) return true;
+  if (["to", "current", "present", "company name", "company", "n/a"].includes(t)) return true;
+  return false;
+};
+
+const isLikelyTemplate3RoleTitle = (line) => {
+  const t = cleanJobHeaderPart(line);
+  if (!t) return false;
+  if (isTemplate3NoiseLine(t)) return false;
+  if (looksLikeDateRangeLine(t)) return false;
+  if (t.length < 4 || t.length > 90) return false;
+  if (/[.?!]$/.test(t)) return false;
+  if (/\b(city|state)\b/i.test(t)) return false;
+  return /\b(manager|administrator|consultant|technician|engineer|director|analyst|specialist|coordinator|lead|developer|officer)\b/i.test(
+    t
+  );
+};
+
+const uniqueInOrder = (arr) => {
+  const out = [];
+  const seen = new Set();
+  for (const raw of arr || []) {
+    const x = cleanJobHeaderPart(raw);
+    if (!x) continue;
+    const key = x.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(x);
+  }
+  return out;
+};
+
+const inferTemplate3Awards = (lines, max = 4) => {
+  const pool = uniqueInOrder(cleanTemplate3Lines(lines));
+  const picks = pool.filter((l) =>
+    /\b(award|awarded|certified|certification|certificate|partner|milestone|honor|recognized|recognised)\b/i.test(l)
+  );
+  return picks.slice(0, max);
+};
+
+const cleanTemplate3Lines = (lines) =>
+  (lines || [])
+    .map((l) => cleanJobHeaderPart(stripListPrefix(String(l || "").replace(/ï¼​|\u200b|\uFEFF/g, ""))))
+    .filter((l) => l && !isTemplate3NoiseLine(l));
+
+const limitUniqueSkills = (skills, max = 10) => {
+  const out = [];
+  const seen = new Set();
+  for (const raw of skills || []) {
+    const s = cleanJobHeaderPart(raw);
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+};
+
+const splitTemplate3Skills = (lines) => {
+  const parts = [];
+  for (const line of lines || []) {
+    String(line || "")
+      .split(/[,;|]/)
+      .map((x) => cleanJobHeaderPart(x))
+      .filter(Boolean)
+      .forEach((x) => parts.push(x));
+  }
+  return parts;
+};
+
+const parseTemplate3ExperienceEntries = (lines) => {
+  const clean = cleanTemplate3Lines(lines);
+  if (clean.length === 0) return [];
+
+  const entries = [];
+  let current = null;
+  for (let i = 0; i < clean.length; i++) {
+    const line = clean[i];
+    const years = line.match(/\b(?:19|20)\d{2}\b/g) || [];
+
+    if (isLikelyTemplate3RoleTitle(line)) {
+      if (current && (current.title || current.body.length)) entries.push(current);
+      current = { title: cleanJobHeaderPart(line), body: [], years: [] };
+      continue;
+    }
+
+    if (!current) continue;
+
+    if (looksLikeDateRangeLine(line) || /^\/?\d{4}$/.test(line)) {
+      if (years.length) current.years.push(...years);
+      continue;
+    }
+    if (/\b(city|state)\b/i.test(line)) continue;
+
+    current.body.push(line);
+  }
+  if (current && (current.title || current.body.length)) entries.push(current);
+
+  return entries
+    .map((e) => {
+      const years = uniqueInOrder(e.years).slice(0, 2);
+      const dateRange = years.length === 2 ? `${years[0]} - ${years[1]}` : years[0] || "";
+      const body = uniqueInOrder(e.body).slice(0, 6);
+      return { title: e.title, body, dateRange };
+    })
+    .filter((e) => e.title)
+    .slice(0, 2);
+};
+
+const cleanTemplate3EducationLine = (line) =>
+  cleanJobHeaderPart(stripListPrefix(String(line || "").replace(/ï¼​|\u200b|\uFEFF/g, "")));
+
+const isTemplate3EducationNoise = (line) => {
+  const t = cleanTemplate3EducationLine(line).toLowerCase();
+  if (!t) return true;
+  if (/^[,.;:|/\\-]+$/.test(t)) return true;
+  if (["to", "current", "present", "city", "state", "company name", "company", "n/a"].includes(t)) return true;
+  if (/^\/?\d{4}$/.test(t)) return true;
+  return false;
+};
+
+const isLikelyEducationTitle = (line) =>
+  /\b(bachelor|master|phd|doctorate|diploma|degree|high school|school|college|university|academy|institute|technician|associate)\b/i.test(
+    line || ""
+  );
+
+const parseTemplate3EducationEntries = (lines) => {
+  const clean = (lines || [])
+    .map(cleanTemplate3EducationLine)
+    .filter((l) => l && !isTemplate3EducationNoise(l));
+  if (clean.length === 0) return [];
+
+  const entries = [];
+  let current = null;
+  for (const line of clean) {
+    if (isLikelyEducationTitle(line)) {
+      if (current && current.title) entries.push(current);
+      current = { title: line, desc: [] };
+      continue;
+    }
+    if (!current) {
+      current = { title: line, desc: [] };
+      continue;
+    }
+    current.desc.push(line);
+  }
+  if (current && current.title) entries.push(current);
+
+  return entries.slice(0, 3).map((e) => ({
+    title: e.title,
+    desc: uniqueInOrder(e.desc).slice(0, 2).join(" "),
+  }));
+};
+
+/** Extracts Template 3 fields from raw text with minimal guessing. */
+const extractTemplate3Content = (text) => {
+  const sec = splitTemplate3Sections(text || "");
+  const intro = cleanTemplate3Lines(sec.intro);
+  const nameFromPrefix = intro.find((l) => /^name\s*:/i.test(l))?.replace(/^name\s*:/i, "").trim() || "";
+  const introPlain = intro.filter((l) => !/^name\s*:/i.test(l));
+
+  const summaryLines = cleanTemplate3Lines(sec.summary);
+  const skillLines = limitUniqueSkills(splitTemplate3Skills(cleanTemplate3Lines(sec.skills)), 10);
+  const highlightLines = cleanTemplate3Lines(sec.highlights);
+  const awardsLines = cleanTemplate3Lines(sec.awards);
+  const expLines = cleanTemplate3Lines(sec.experience);
+  const eduEntries = parseTemplate3EducationEntries(sec.education);
+  const expHasSection = expLines.length > 0;
+  const parsedEntries = parseTemplate3ExperienceEntries(expHasSection ? expLines : highlightLines);
+  const inferredAwards =
+    awardsLines.length > 0
+      ? []
+      : inferTemplate3Awards([
+          ...sec.highlights,
+          ...sec.experience,
+          ...sec.summary,
+          ...sec.skills,
+        ]);
+
+  // Ordered mapping:
+  // - If Experience section exists: first non-date line is title, rest are paragraph lines.
+  // - Else: use Highlights in order (first item title, rest paragraph).
+  let post1 = "";
+  let work1Lines = [];
+  let post2 = "";
+  let work2Lines = [];
+
+  if (parsedEntries.length > 0) {
+    const e1 = parsedEntries[0];
+    post1 = e1.title || "";
+    work1Lines = [e1.dateRange, ...(e1.body || [])].filter(Boolean);
+    const e2 = parsedEntries[1];
+    if (e2) {
+      post2 = e2.title || "";
+      work2Lines = [e2.dateRange, ...(e2.body || [])].filter(Boolean);
+    }
+  } else if (expHasSection) {
+    post1 = expLines[0] || "";
+    work1Lines = expLines.slice(1).slice(0, 6);
+  } else if (highlightLines.length > 0) {
+    post1 = highlightLines[0] || "";
+    work1Lines = highlightLines.slice(1).slice(0, 6);
+  }
+
+  // Optional second block only when there are many experience lines.
+  if (!post2 && expHasSection && work1Lines.length >= 8) {
+    post2 = work1Lines[0] || "";
+    work2Lines = work1Lines.slice(1).slice(0, 6);
+    // Keep first block focused and in-order.
+    work1Lines = [];
+  }
+
+  return {
+    name: nameFromPrefix || introPlain[0] || "",
+    profession: introPlain[1] || "",
+    skills: skillLines.join(", "),
+    summaryHtml: summaryLines.length ? plainToRichHtml(summaryLines.join("\n\n")) : "",
+    post1,
+    work1Html: work1Lines.length ? plainToRichHtml(work1Lines.join("\n\n")) : "",
+    post2,
+    work2Html: work2Lines.length ? plainToRichHtml(work2Lines.join("\n\n")) : "",
+    awards: (awardsLines.length > 0 ? awardsLines : inferredAwards).slice(0, 4),
+    edu1Title: eduEntries[0]?.title || "",
+    edu1Desc: eduEntries[0]?.desc || "",
+    edu2Title: eduEntries[1]?.title || "",
+    edu2Desc: eduEntries[1]?.desc || "",
+    edu3Title: eduEntries[2]?.title || "",
+    edu3Desc: eduEntries[2]?.desc || "",
+  };
 };
 
 /** Recognize common CV section headers for organized preview */
@@ -104,6 +399,7 @@ const imageToCircularDataUrl = (dataUrl, size = 144) => {
 };
 
 const PREMIUM_TEMPLATE_IDS = [2, 5, 7, 11, 14, 16]; // Premium templates - pay to access
+const VISUAL_PDF_TEMPLATE_IDS = [1, 2, 3, 9, 10, 11, 12, 13, 14, 15, 16];
 
 const TEMPLATE_NAMES = {
   1: "Modern Professional", 2: "Classic Elegant", 3: "Creative Design",
@@ -163,12 +459,18 @@ const Fill_cv = () => {
 
   const cvRef = useRef(null); // ref to capture the cv section
   const image7DataUrlRef = useRef(null); // for blob→dataURL conversion when generating Template 7 PDF
+  const addressTemp3Ref = useRef(null);
+  const skillsTemp3Ref = useRef(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [showEnhancedRef, setShowEnhancedRef] = useState(true);
   const [editableRefContent, setEditableRefContent] = useState('');
   const [copied, setCopied] = useState(false);
   const [isApplyingToTemplate, setIsApplyingToTemplate] = useState(false);
+  const editableRefContentRef = useRef('');
+  useEffect(() => {
+    editableRefContentRef.current = editableRefContent;
+  }, [editableRefContent]);
 
   useEffect(() => {
     if (enhancedResume) setEditableRefContent(enhancedResume);
@@ -187,7 +489,8 @@ const Fill_cv = () => {
   const [applyFeedback, setApplyFeedback] = useState('');
   /** @returns {boolean} true if parsed and mapped to template fields */
   const applyEditedContentToTemplate = (text) => {
-    if (!text?.trim() || !templateId || isNaN(templateId)) {
+    const tid = Number(templateId);
+    if (!text?.trim() || !Number.isFinite(tid) || tid < 1) {
       setApplyFeedback('Select a template and add content in the sidebar to apply.');
       setTimeout(() => setApplyFeedback(''), 4000);
       return false;
@@ -318,22 +621,54 @@ const Fill_cv = () => {
       if (data.education.school) setUniversitytemp2(data.education.school);
       if (data.name) setNametemp2(data.name.replace(/^Name:\s*/i, "").toUpperCase());
     } else if (templateId === 3) {
-      if (data.profession) setProfessiontemp3(data.profession);
-      if (data.skills.length > 0) setSkillstemp3(data.skills.join(', '));
-      if (data.summary) setAbouttemp3(data.summary);
-      if (data.experiences.length > 0) {
-        const ex = data.experiences[0];
-        if (ex.role) setPosttemp3(ex.dateRange ? `${ex.role} (${ex.dateRange})` : ex.role);
-        if (ex.responsibilities.length > 0) setWorkdonetemp3(ex.responsibilities.join(' '));
+      // For template 3, map directly from visible sidebar text sections with minimal guessing.
+      const sourceText = typeof text === 'string' ? text : (enhancedResume || editableRefContent || '');
+      const t3 = extractTemplate3Content(sourceText);
+
+      // Clear placeholders so only provided content appears.
+      setPosttemp3('');
+      setPost2temp3('');
+      setWorkdonetemp3('');
+      setWorkdone2temp3('');
+      setSkillstemp3('');
+      setAwardstemp3(['', '', '', '']);
+
+      if (data.contact?.phone) setPhone1temp3(data.contact.phone);
+      if (data.contact?.email) setEmailtemp3(data.contact.email);
+      if (data.contact?.address) setAddresstemp3(data.contact.address);
+      if (data.contact?.linkedin) setWebsitetemp3(data.contact.linkedin);
+
+      if (t3.name) setNametemp3(t3.name);
+      else if (data.name) setNametemp3(data.name);
+      if (t3.profession) setProfessiontemp3(t3.profession);
+      else if (data.profession) setProfessiontemp3(data.profession);
+      if (t3.skills) setSkillstemp3(t3.skills);
+      if (t3.summaryHtml) setAbouttemp3(t3.summaryHtml);
+
+      const awards = [...(t3.awards || [])];
+      while (awards.length < 4) awards.push('');
+      setAwardstemp3(awards.slice(0, 4));
+
+      setPosttemp3(t3.post1 || '');
+      setWorkdonetemp3(t3.work1Html || '');
+      setPost2temp3(t3.post2 || '');
+      setWorkdone2temp3(t3.work2Html || '');
+      setEdu1temp3('');
+      setEdu1desctemp3('');
+      setEdu2temp3('');
+      setEdu2desctemp3('');
+      setEdu3temp3('');
+      setEdu3desctemp3('');
+      if (t3.edu1Title) setEdu1temp3(t3.edu1Title);
+      if (t3.edu1Desc) setEdu1desctemp3(t3.edu1Desc);
+      if (t3.edu2Title) setEdu2temp3(t3.edu2Title);
+      if (t3.edu2Desc) setEdu2desctemp3(t3.edu2Desc);
+      if (t3.edu3Title) setEdu3temp3(t3.edu3Title);
+      if (t3.edu3Desc) setEdu3desctemp3(t3.edu3Desc);
+      if (!t3.edu1Title && data.education.degree) {
+        setEdu1temp3(data.education.date ? `${data.education.degree} (${data.education.date})` : data.education.degree);
       }
-      if (data.experiences.length > 1) {
-        const ex = data.experiences[1];
-        if (ex.role) setPost2temp3(ex.dateRange ? `${ex.role} (${ex.dateRange})` : ex.role);
-        if (ex.responsibilities.length > 0) setWorkdone2temp3(ex.responsibilities.join(' '));
-      }
-      if (data.education.degree) setEdu1temp3(data.education.date ? `${data.education.degree} (${data.education.date})` : data.education.degree);
-      if (data.education.school) setEdu1desctemp3(data.education.school);
-      if (data.name) setNametemp3(data.name);
+      if (!t3.edu1Desc && data.education.school) setEdu1desctemp3(data.education.school);
     } else if (templateId === 4) {
       if (data.profession) setProfessiontemp4(data.profession);
       if (data.summary) setSummarytemp4(data.summary);
@@ -648,7 +983,7 @@ const Fill_cv = () => {
     const delayMs = 2500;
     await new Promise((r) => setTimeout(r, delayMs));
     try {
-      applyEditedContentToTemplate(editableRefContent);
+      applyEditedContentToTemplate(editableRefContentRef.current);
     } finally {
       setIsApplyingToTemplate(false);
     }
@@ -753,7 +1088,7 @@ const Fill_cv = () => {
     // Enhanced download function — visual templates use html2canvas for PDF/PNG; others use text jsPDF for PDF
     const handleDownload = async (format = 'pdf', useEditableFilename = false) => {
       // PDFs that mirror the on-screen layout (html2canvas) — same look as the editor (incl. Template 2 two-column design)
-      const pdfUsesHtml2Canvas = [1, 2, 9, 10, 11, 12, 13, 14, 15, 16].includes(templateId);
+      const pdfUsesHtml2Canvas = VISUAL_PDF_TEMPLATE_IDS.includes(templateId);
       const useVisualPdf = format === 'pdf' && pdfUsesHtml2Canvas;
 
       if (!cvRef.current && (format === 'png' || useVisualPdf)) {
@@ -2612,6 +2947,32 @@ const Fill_cv = () => {
   const [edu3temp3, setEdu3temp3] = useState("Junior School Diploma (2003 - 2006)");
   const [edu3desctemp3, setEdu3desctemp3] = useState("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.");
 
+  const resetTemplate3 = () => {
+    if (!window.confirm('Reset template to default? All your edits will be cleared.')) return;
+    setNametemp3("Linda Brown");
+    setProfessiontemp3("Copywriter");
+    setProfilePhotoTemp3("");
+    setPhone1temp3("(555) 555-0100");
+    setPhone2temp3("(311) 555-2368");
+    setAddresstemp3("2701 Willow Oaks Lane, Lake Charles, LA");
+    setSkillstemp3("Communication, Teamwork, Responsibility, Creativity, Problem-solving, Leadership, Adaptive");
+    setSocialHandleTemp3("@lindabrown");
+    setWebsitetemp3("www.lindabrown.site.com");
+    setEmailtemp3("l.brown@email.site.com");
+    setAbouttemp3("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.");
+    setAwardstemp3(["Award 01 placeholder", "Award 02 placeholder", "Award 03 placeholder", "Award 04 placeholder"]);
+    setPosttemp3("Project Manager (2017 - Present)");
+    setWorkdonetemp3("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.");
+    setPost2temp3("Editor (2014 - 2017)");
+    setWorkdone2temp3("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.");
+    setEdu1temp3("Bachelor of Literature (2009 - 2014)");
+    setEdu1desctemp3("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.");
+    setEdu2temp3("High School Diploma (2006 - 2009)");
+    setEdu2desctemp3("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.");
+    setEdu3temp3("Junior School Diploma (2003 - 2006)");
+    setEdu3desctemp3("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.");
+  };
+
   //end of template 3
 
   //state for the template 4
@@ -3056,6 +3417,18 @@ const Fill_cv = () => {
     el.style.height = Math.max(el.scrollHeight, minH) + 'px';
   };
 
+  // Template 3 top-row textareas (Address/Skills) can grow a lot on long text.
+  // When content is replaced programmatically (Copy to template), shrink back to fit.
+  useEffect(() => {
+    const resize = (el, minH) => {
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = Math.max(el.scrollHeight, minH) + 'px';
+    };
+    resize(addressTemp3Ref.current, 28);
+    resize(skillsTemp3Ref.current, 32);
+  }, [addresstemp3, skillstemp3]);
+
   // Auto-populate template fields from enhanced CV when available
   useEffect(() => {
     if (!enhancedResume || !templateId) return;
@@ -3226,22 +3599,53 @@ const Fill_cv = () => {
         if (ex.responsibilities.length > 0) { setWorkdesc2temp9(ex.responsibilities[0]); setWorkdone2temp9(ex.responsibilities.slice(1, 3)); }
       }
     } else if (templateId === 3) {
-      if (data.profession) setProfessiontemp3(data.profession);
-      if (data.skills.length > 0) setSkillstemp3(data.skills.join(', '));
-      if (data.summary) setAbouttemp3(data.summary);
-      if (data.experiences.length > 0) {
-        const ex = data.experiences[0];
-        if (ex.role) setPosttemp3(ex.dateRange ? `${ex.role} (${ex.dateRange})` : ex.role);
-        if (ex.responsibilities.length > 0) setWorkdonetemp3(ex.responsibilities.join(' '));
+      const sourceText = typeof text === 'string' ? text : (enhancedResume || editableRefContent || '');
+      const t3 = extractTemplate3Content(sourceText);
+
+      // Clear placeholders so only provided content appears.
+      setPosttemp3('');
+      setPost2temp3('');
+      setWorkdonetemp3('');
+      setWorkdone2temp3('');
+      setSkillstemp3('');
+      setAwardstemp3(['', '', '', '']);
+
+      if (data.contact?.phone) setPhone1temp3(data.contact.phone);
+      if (data.contact?.email) setEmailtemp3(data.contact.email);
+      if (data.contact?.address) setAddresstemp3(data.contact.address);
+      if (data.contact?.linkedin) setWebsitetemp3(data.contact.linkedin);
+
+      if (t3.name) setNametemp3(t3.name);
+      else if (data.name) setNametemp3(data.name);
+      if (t3.profession) setProfessiontemp3(t3.profession);
+      else if (data.profession) setProfessiontemp3(data.profession);
+      if (t3.skills) setSkillstemp3(t3.skills);
+      if (t3.summaryHtml) setAbouttemp3(t3.summaryHtml);
+
+      const awards = [...(t3.awards || [])];
+      while (awards.length < 4) awards.push('');
+      setAwardstemp3(awards.slice(0, 4));
+
+      setPosttemp3(t3.post1 || '');
+      setWorkdonetemp3(t3.work1Html || '');
+      setPost2temp3(t3.post2 || '');
+      setWorkdone2temp3(t3.work2Html || '');
+      setEdu1temp3('');
+      setEdu1desctemp3('');
+      setEdu2temp3('');
+      setEdu2desctemp3('');
+      setEdu3temp3('');
+      setEdu3desctemp3('');
+      if (t3.edu1Title) setEdu1temp3(t3.edu1Title);
+      if (t3.edu1Desc) setEdu1desctemp3(t3.edu1Desc);
+      if (t3.edu2Title) setEdu2temp3(t3.edu2Title);
+      if (t3.edu2Desc) setEdu2desctemp3(t3.edu2Desc);
+      if (t3.edu3Title) setEdu3temp3(t3.edu3Title);
+      if (t3.edu3Desc) setEdu3desctemp3(t3.edu3Desc);
+      if (!t3.edu1Title && data.education.degree) {
+        setEdu1temp3(data.education.date ? `${data.education.degree} (${data.education.date})` : data.education.degree);
       }
-      if (data.experiences.length > 1) {
-        const ex = data.experiences[1];
-        if (ex.role) setPost2temp3(ex.dateRange ? `${ex.role} (${ex.dateRange})` : ex.role);
-        if (ex.responsibilities.length > 0) setWorkdone2temp3(ex.responsibilities.join(' '));
-      }
-      if (data.education.degree) setEdu1temp3(data.education.date ? `${data.education.degree} (${data.education.date})` : data.education.degree);
-      if (data.education.school) setEdu1desctemp3(data.education.school);
-      if (data.name) setNametemp3(data.name);
+      if (!t3.edu1Desc && data.education.school) setEdu1desctemp3(data.education.school);
     } else if (templateId === 4) {
       if (data.profession) setProfessiontemp4(data.profession);
       if (data.summary) setSummarytemp4(data.summary);
@@ -3853,9 +4257,15 @@ const Fill_cv = () => {
       doc.setFontSize(12);
       doc.text(professiontemp3 || 'Professional Title', margin, y);
       y += lineHeight * 2;
+      const t3SkillsForPdf = (skillstemp3 || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 10)
+        .join(', ');
       addSection('Phone', `${phone1temp3}\n${phone2temp3}`);
       addSection('Address', addresstemp3);
-      addSection('Skills', skillstemp3);
+      addSection('Skills', t3SkillsForPdf);
       addSection('Social Media', `${socialHandleTemp3}\n${websitetemp3}\n${emailtemp3}`);
       addSection('About', stripHtml(abouttemp3));
       addSection('Awards', awardstemp3.filter(Boolean).map((a, i) => `${String(i + 1).padStart(2, '0')} ${a}`).join('\n'));
@@ -4935,57 +5345,79 @@ const Fill_cv = () => {
             <div className="border-t-2 border-black mx-6" />
             {/* Contact & Skills Row */}
             <div className="grid grid-cols-3 gap-6 px-6 py-4 text-sm">
-              <div>
+              <div className="min-w-0">
                 <p className="font-bold text-black mb-1">Phone</p>
-                <input type="text" value={phone1temp3} onChange={(e) => setPhone1temp3(e.target.value)} className="bg-transparent w-full text-gray-800" />
-                <input type="text" value={phone2temp3} onChange={(e) => setPhone2temp3(e.target.value)} className="bg-transparent w-full text-gray-800" />
+                <input type="text" value={phone1temp3} onChange={(e) => setPhone1temp3(e.target.value)} className="bg-transparent w-full min-w-0 text-gray-800" />
+                <input type="text" value={phone2temp3} onChange={(e) => setPhone2temp3(e.target.value)} className="bg-transparent w-full min-w-0 text-gray-800" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-bold text-black mb-1">Address</p>
-                <input type="text" value={addresstemp3} onChange={(e) => setAddresstemp3(e.target.value)} className="bg-transparent w-full text-gray-800" />
+                <textarea
+                  ref={addressTemp3Ref}
+                  value={addresstemp3}
+                  onChange={(e) => setAddresstemp3(e.target.value)}
+                  onInput={(e) => resizeTextareaOnInput(e, 28)}
+                  style={{ fieldSizing: 'content' }}
+                  rows={2}
+                  className="bg-transparent w-full min-w-0 text-gray-800 resize-none break-words [overflow-wrap:anywhere] leading-relaxed"
+                  placeholder="Address"
+                />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-bold text-black mb-1">Skills</p>
-                <input type="text" value={skillstemp3} onChange={(e) => setSkillstemp3(e.target.value)} className="bg-transparent w-full text-gray-800" placeholder="Comma-separated skills" />
+                <textarea
+                  ref={skillsTemp3Ref}
+                  value={skillstemp3}
+                  onChange={(e) => setSkillstemp3(e.target.value)}
+                  onInput={(e) => resizeTextareaOnInput(e, 32)}
+                  style={{ fieldSizing: 'content' }}
+                  rows={3}
+                  className="bg-transparent w-full min-w-0 min-h-[3.5rem] text-gray-800 resize-none break-words [overflow-wrap:anywhere] leading-relaxed"
+                  placeholder="Comma-separated skills (wraps to multiple lines)"
+                />
               </div>
             </div>
             <div className="border-t-2 border-black mx-6" />
             {/* Two columns */}
             <div className="flex">
-              <div className="w-1/3 p-6 space-y-6">
+              <div className="w-1/3 p-6 space-y-6 min-w-0">
                 <div>
                   <h3 className={`text-sm font-bold text-black border-b border-black mb-2 ${CV_SEC_H3}`}>Social Media</h3>
                   <input type="text" value={socialHandleTemp3} onChange={(e) => setSocialHandleTemp3(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 mb-1" />
                   <input type="text" value={websitetemp3} onChange={(e) => setWebsitetemp3(e.target.value)} className="text-sm bg-transparent w-full text-gray-800 mb-1" />
                   <input type="text" value={emailtemp3} onChange={(e) => setEmailtemp3(e.target.value)} className="text-sm bg-transparent w-full text-gray-800" />
                 </div>
-                <div className="border-t border-gray-400 pt-4">
+                <div className="border-t border-gray-400 pt-4 min-w-0">
                   <h3 className={`text-sm font-bold text-black border-b border-black mb-2 ${CV_SEC_H3}`}>About</h3>
-                  <RichTextBlock value={abouttemp3} onChange={setAbouttemp3} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed" minHeight="60px" placeholder="About you..." />
+                  <RichTextBlock value={abouttemp3} onChange={setAbouttemp3} className="text-sm bg-transparent w-full min-w-0 text-gray-800 leading-relaxed break-words [overflow-wrap:anywhere]" minHeight="60px" placeholder="About you..." />
                 </div>
                 <div className="border-t border-gray-400 pt-4">
                   <h3 className={`text-sm font-bold text-black border-b border-black mb-2 ${CV_SEC_H3}`}>Awards</h3>
                   <div className="space-y-3">
                     {awardstemp3.map((a, i) => (
-                      <div key={i} className="flex gap-3">
+                      <div key={i} className="flex gap-3 min-w-0">
                         <span className="text-2xl font-bold text-gray-900 flex-shrink-0" style={{ fontFamily: "Georgia, serif" }}>{String(i + 1).padStart(2, "0")}</span>
-                        <input type="text" value={a} onChange={(e) => handleAwardstemp3Change(i, e.target.value)} className="text-sm bg-transparent flex-1 text-gray-800" />
+                        <input type="text" value={a} onChange={(e) => handleAwardstemp3Change(i, e.target.value)} className="text-sm bg-transparent flex-1 min-w-0 text-gray-800 break-words [overflow-wrap:anywhere]" />
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="flex-1 p-6 space-y-6 border-l border-gray-300">
+              <div className="flex-1 p-6 space-y-6 border-l border-gray-300 min-w-0">
                 <div>
                   <h3 className={`text-sm font-bold text-black border-b border-black mb-3 ${CV_SEC_H3}`}>Work Experience</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <input type="text" value={posttemp3} onChange={(e) => setPosttemp3(e.target.value)} className="text-sm font-bold bg-transparent w-full text-gray-900" placeholder="Project Manager (2017 - Present)" />
-                      <RichTextBlock value={workdonetemp3} onChange={setWorkdonetemp3} className="text-sm bg-transparent w-full text-gray-800 mt-2 leading-relaxed" minHeight="40px" />
+                  <div className="flex flex-col gap-4 min-w-0">
+                    <div className="flex flex-col gap-2 min-w-0 flex-1">
+                      <input type="text" value={posttemp3} onChange={(e) => setPosttemp3(e.target.value)} className="shrink-0 text-sm font-bold bg-transparent w-full min-w-0 text-gray-900" placeholder="Job title" />
+                      <div className="flex flex-1 min-h-0 min-w-0 flex-col">
+                        <RichTextBlock value={workdonetemp3} onChange={setWorkdonetemp3} className="text-sm bg-transparent w-full min-w-0 flex-1 min-h-[3rem] text-gray-800 leading-relaxed break-words [overflow-wrap:anywhere]" minHeight="48px" />
+                      </div>
                     </div>
-                    <div className="border-t border-gray-400 pt-4">
-                      <input type="text" value={post2temp3} onChange={(e) => setPost2temp3(e.target.value)} className="text-sm font-bold bg-transparent w-full text-gray-900" placeholder="Editor (2014 - 2017)" />
-                      <RichTextBlock value={workdone2temp3} onChange={setWorkdone2temp3} className="text-sm bg-transparent w-full text-gray-800 mt-2 leading-relaxed" minHeight="40px" />
+                    <div className="border-t border-gray-400 pt-4 flex flex-col gap-2 min-w-0 flex-1">
+                      <input type="text" value={post2temp3} onChange={(e) => setPost2temp3(e.target.value)} className="shrink-0 text-sm font-bold bg-transparent w-full min-w-0 text-gray-900" placeholder="Job title" />
+                      <div className="flex flex-1 min-h-0 min-w-0 flex-col">
+                        <RichTextBlock value={workdone2temp3} onChange={setWorkdone2temp3} className="text-sm bg-transparent w-full min-w-0 flex-1 min-h-[3rem] text-gray-800 leading-relaxed break-words [overflow-wrap:anywhere]" minHeight="48px" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -6652,33 +7084,6 @@ const Fill_cv = () => {
     <img src={Logo} className="h-[70px] w-52 ml-20 mt-[-10px] absolute object-contain" alt="Logo" />
     <p className="text-slate-100 ml-[600px] font-medium text-lg mt-3 absolute hidden xl:block pointer-events-none">Click anywhere to edit your CV</p>
     <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 sm:gap-3 max-w-[min(52vw,calc(100%-12rem))] sm:max-w-none justify-end">
-      {enhancedResume && (
-        <button
-          type="button"
-          onClick={handleCopyToTemplate}
-          disabled={isApplyingToTemplate}
-          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
-          title="Copy sidebar content into the CV fields"
-        >
-          {isApplyingToTemplate ? (
-            <>
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <span className="hidden sm:inline">Working…</span>
-            </>
-          ) : (
-            <>
-              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              <span className="hidden sm:inline">Copy to template</span>
-              <span className="sm:hidden">Copy</span>
-            </>
-          )}
-        </button>
-      )}
       <span className="text-slate-300 text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-[11rem] text-right">
         {TEMPLATE_NAMES[templateId] || `Template ${templateId}`}
       </span>
@@ -6806,7 +7211,7 @@ const Fill_cv = () => {
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-snug">
-                  Use <strong>Copy to template</strong> at the top of this panel, in the header bar, or in the formatting toolbar.
+                  Use the green <strong>Copy to template</strong> button above to fill the CV fields from this text.
                 </p>
               </div>
             </div>
@@ -6832,33 +7237,6 @@ const Fill_cv = () => {
       <FormattingToolbar
         layoutOffsetClass={
           enhancedResume && showEnhancedRef ? 'lg:pl-[22rem] xl:pl-[24rem]' : ''
-        }
-        extraActions={
-          enhancedResume ? (
-            <button
-              type="button"
-              onClick={handleCopyToTemplate}
-              disabled={isApplyingToTemplate}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm border border-emerald-700/30"
-            >
-              {isApplyingToTemplate ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Working…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Copy to template
-                </>
-              )}
-            </button>
-          ) : null
         }
       />
       <div
@@ -6894,10 +7272,22 @@ const Fill_cv = () => {
               : 'bottom-4 md:bottom-6'
           }`}
         >
-          {/* Reset Template Button - visible for template 1 */}
+          {/* Reset template — restore placeholder defaults for supported layouts */}
           {templateId === 1 && (
             <button
               onClick={resetTemplate1}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold shadow-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reset template
+            </button>
+          )}
+          {templateId === 3 && (
+            <button
+              type="button"
+              onClick={resetTemplate3}
               className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold shadow-lg transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -6918,7 +7308,7 @@ const Fill_cv = () => {
             </div>
             
             <button
-              onClick={() => handleDownload('pdf', true)}
+              onClick={() => handleDownload('pdf', !VISUAL_PDF_TEMPLATE_IDS.includes(templateId))}
               disabled={isDownloading}
               className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full md:min-w-[180px] justify-center text-sm md:text-base"
             >
@@ -6935,11 +7325,15 @@ const Fill_cv = () => {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 8.414V19a2 2 0 01-2 2z" />
                   </svg>
-                  Download as Editable PDF
+                  {VISUAL_PDF_TEMPLATE_IDS.includes(templateId) ? 'Download PDF (Template Layout)' : 'Download Text Editable PDF'}
                 </>
               )}
             </button>
-            <p className="text-xs text-gray-500 -mt-1">Editable text — select and copy in any PDF viewer</p>
+            <p className="text-xs text-gray-500 -mt-1">
+              {VISUAL_PDF_TEMPLATE_IDS.includes(templateId)
+                ? 'PDF matches the template preview layout.'
+                : 'Text-only editable PDF (not design-matched). Use PNG for exact visual layout.'}
+            </p>
 
             <button
               onClick={() => handleDownload('png')}
