@@ -18,10 +18,27 @@ export function looksLikeDateRangeLine(s) {
 }
 
 /**
+ * Normalize common mojibake/encoding artifacts from pasted CV text.
+ * Examples: "Â·", "â€¢", zero-width chars, NBSPs.
+ */
+function normalizeEnhancedInput(raw) {
+  if (!raw || typeof raw !== "string") return "";
+  return raw
+    .replace(/\u200b|\uFEFF|ï¼​/g, "")
+    .replace(/\u00a0/g, " ")
+    .replace(/Â(?=[•·:\-\s])/g, "")
+    .replace(/â€¢|Â·|·/g, "\n• ")
+    .replace(/\s*[•▪●]\s*/g, "\n• ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * Parses enhanced CV text into structured data for auto-populating template fields.
  */
 export function parseEnhancedResumeToStructuredData(text) {
   if (!text || typeof text !== "string") return null;
+  const normalizedText = normalizeEnhancedInput(text);
 
   const result = {
     name: "",
@@ -35,8 +52,8 @@ export function parseEnhancedResumeToStructuredData(text) {
     contact: { phone: "", email: "", address: "", linkedin: "", location: "" },
   };
 
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  const textLower = text.toLowerCase();
+  const lines = normalizedText.split("\n").map((l) => l.trim()).filter(Boolean);
+  const textLower = normalizedText.toLowerCase();
 
   const sectionHeaders = [
     "professional summary", "executive summary", "summary", "profile", "about me",
@@ -106,7 +123,12 @@ export function parseEnhancedResumeToStructuredData(text) {
       (lineLower.startsWith("about") && line.length < 48)
     ) {
       const content = getSectionContent(i);
-      result.summary = content.join(" ").replace(/\s+/g, " ").trim().slice(0, 800);
+      const joined = content
+        .join("\n")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      result.summary = joined.slice(0, 800);
     } else if (lineLower.includes("skills") || lineLower.includes("competencies") || lineLower.includes("expertise")) {
       const content = getSectionContent(i);
       const skillItems = [];
@@ -334,13 +356,13 @@ export function parseEnhancedResumeToStructuredData(text) {
   }
 
   // Contact (phone, email, address) for templates that expose those fields
-  const emailM = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  const emailM = normalizedText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   if (emailM) result.contact.email = emailM[0];
-  const phoneM = text.match(
+  const phoneM = normalizedText.match(
     /(?:\+?\d{1,3}[-.\s\u00a0]?)?(?:\(\d{3}\)|\d{3})[-.\s\u00a0]?\d{3}[-.\s\u00a0]?\d{4}\b/
   );
   if (phoneM) result.contact.phone = phoneM[0].trim();
-  const linkedinM = text.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i);
+  const linkedinM = normalizedText.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i);
   if (linkedinM) result.contact.linkedin = linkedinM[0].replace(/^https?:\/\//i, "");
   const addrLine = lines.find(
     (l) =>
@@ -357,7 +379,7 @@ export function parseEnhancedResumeToStructuredData(text) {
   }
 
   if (result.skills.length === 0) {
-    const skillKeywords = text.match(/\b(JavaScript|Python|React|Node\.?js|AWS|SQL|Java|C\+\+|HTML|CSS|Docker|Kubernetes|Git|Linux|Excel|Management|Leadership|Network|IT|Administration|WAN|LAN|WLAN|tracking|deployment|backup|enterprise)\b/gi);
+    const skillKeywords = normalizedText.match(/\b(JavaScript|Python|React|Node\.?js|AWS|SQL|Java|C\+\+|HTML|CSS|Docker|Kubernetes|Git|Linux|Excel|Management|Leadership|Network|IT|Administration|WAN|LAN|WLAN|tracking|deployment|backup|enterprise)\b/gi);
     if (skillKeywords) result.skills = [...new Set(skillKeywords)].slice(0, 10);
   }
 

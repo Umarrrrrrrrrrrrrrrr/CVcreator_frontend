@@ -20,6 +20,18 @@ const CvGrade = () => {
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  const isValidFileType = (f) => {
+    if (!f) return false;
+    const validTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+      "application/octet-stream",
+    ];
+    const validExt = /\.(pdf|docx|doc)$/i.test(f.name || "");
+    return validTypes.includes(f.type) || validExt;
+  };
+
   const gradeFile = async (f) => {
     if (!f) return;
     setLoading(true);
@@ -55,6 +67,10 @@ const CvGrade = () => {
     setCvText("");
     setResult(null);
     setError("");
+    if (f && !isValidFileType(f)) {
+      setError("Please upload a valid PDF, DOCX, or DOC file.");
+      return;
+    }
     if (f) {
       await gradeFile(f);
     }

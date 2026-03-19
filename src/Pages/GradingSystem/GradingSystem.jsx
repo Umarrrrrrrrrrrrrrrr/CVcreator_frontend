@@ -123,8 +123,10 @@ const GradingSystem = () => {
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
       'application/msword', // .doc
+      'application/octet-stream', // common for files forwarded/downloaded via chat apps
     ];
-    return file && validTypes.includes(file.type);
+    const validExt = /\.(pdf|docx|doc)$/i.test(file?.name || '');
+    return Boolean(file && (validTypes.includes(file.type) || validExt));
   };
 
   const callGradeApi = async (file) => {

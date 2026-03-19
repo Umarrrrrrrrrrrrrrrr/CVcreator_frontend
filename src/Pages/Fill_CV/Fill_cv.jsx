@@ -35,9 +35,93 @@ const plainToRichHtml = (text) => {
     .join('');
 };
 
+/** Convert noisy bullet-style text into one readable paragraph. */
+const toReadableParagraph = (text) => {
+  if (!text || typeof text !== 'string') return '';
+  const cleaned = text
+    .replace(/Â/g, '')
+    .replace(/\u200b|\uFEFF|ï¼​/g, '')
+    .replace(/\r\n/g, '\n');
+  const parts = cleaned
+    .split(/\n|•|·|\u2022/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+};
+
 const cleanJobHeaderPart = (s) => {
   if (!s || typeof s !== 'string') return '';
   return s.replace(/^[,;:\s–—\-]+|[,;:\s–—\-]+$/g, '').trim();
+};
+
+const isEmploymentNoiseToken = (s) => {
+  const t = cleanJobHeaderPart(s || '').toLowerCase();
+  if (!t) return true;
+  if (/^\/?\d{4}$/.test(t)) return true;
+  if (["to", "current", "present", "city", "state", "company name", "company", "n/a"].includes(t)) return true;
+  return looksLikeDateRangeLine(t);
+};
+
+const splitParagraphToBullets = (text, max = 4) => {
+  const cleaned = toReadableParagraph(text || "");
+  if (!cleaned) return [];
+  const sentences = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => cleanJobHeaderPart(s))
+    .filter(Boolean);
+  if (sentences.length > 0) return sentences.slice(0, max);
+  return [cleaned].slice(0, max);
+};
+
+const normalizeTemplate4Experience = (ex, fallbackTitle = "Professional Experience", fallbackBullets = []) => {
+  const roleRaw = cleanJobHeaderPart(ex?.role || '');
+  const companyRaw = cleanJobHeaderPart(ex?.company || '');
+  const dateRaw = cleanJobHeaderPart(ex?.dateRange || '');
+  let role = roleRaw;
+  let company = companyRaw;
+  let date = dateRaw;
+  const roleIsMonthYear = /^\d{1,2}\/\d{4}$/.test(roleRaw);
+  const dateIsConnectorOnly = /^(to|current|present)$/i.test(dateRaw);
+
+  if (isEmploymentNoiseToken(role)) {
+    if (!date && roleRaw) date = roleRaw;
+    role = '';
+  }
+  if (isEmploymentNoiseToken(company)) {
+    if (!date && companyRaw) date = companyRaw;
+    company = '';
+  }
+  if (!role && company && !isEmploymentNoiseToken(company)) {
+    role = company;
+    company = '';
+  }
+  if (roleIsMonthYear && (!date || dateIsConnectorOnly)) {
+    date = roleRaw;
+    role = '';
+  }
+  if (dateIsConnectorOnly) {
+    date = "";
+  }
+
+  const bullets = (ex?.responsibilities || [])
+    .map((r) => toReadableParagraph(String(r || '')))
+    .map((r) => cleanJobHeaderPart(r))
+    .filter((r) => r && !isEmploymentNoiseToken(r))
+    .slice(0, 4);
+
+  if (!role && bullets.length > 0) {
+    const maybeTitle = bullets[0];
+    if (maybeTitle.length <= 80 && !/[.!?]$/.test(maybeTitle)) {
+      role = maybeTitle;
+      bullets.shift();
+    }
+  }
+  if (bullets.length === 0 && fallbackBullets.length > 0) {
+    bullets.push(...fallbackBullets.slice(0, 4));
+  }
+
+  const post = date ? `${role || fallbackTitle} | ${date}` : (role || fallbackTitle);
+  return { post, company, bullets };
 };
 
 const T3_SECTION_ALIASES = {
@@ -464,6 +548,7 @@ const Fill_cv = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [showEnhancedRef, setShowEnhancedRef] = useState(true);
+  const [showDownloadOptions, setShowDownloadOptions] = useState(true);
   const [editableRefContent, setEditableRefContent] = useState('');
   const [copied, setCopied] = useState(false);
   const [isApplyingToTemplate, setIsApplyingToTemplate] = useState(false);
@@ -671,21 +756,51 @@ const Fill_cv = () => {
       if (!t3.edu1Desc && data.education.school) setEdu1desctemp3(data.education.school);
     } else if (templateId === 4) {
       if (data.profession) setProfessiontemp4(data.profession);
-      if (data.summary) setSummarytemp4(data.summary);
+      if (data.summary) setSummarytemp4(plainToRichHtml(toReadableParagraph(data.summary)));
       if (data.skills.length > 0) {
         setSkillstemp4(data.skills.slice(0, 5).map((name, i) => ({ name, level: 90 - i * 5 })));
       }
+      const summaryBullets = splitParagraphToBullets(data.summary, 4);
+      setPosttemp4('');
+      setCompanytemp4('');
+      setWorkdonetemp4([]);
+      setPost2temp4('');
+      setCompany2temp4('');
+      setWorkdone2temp4([]);
+      let hasMeaningfulEmployment = false;
       if (data.experiences.length > 0) {
-        const ex = data.experiences[0];
-        if (ex.role) setPosttemp4(ex.dateRange ? `${ex.role} | ${ex.dateRange}` : ex.role);
+        const ex = normalizeTemplate4Experience(
+          data.experiences[0],
+          data.profession || "Professional Experience",
+          summaryBullets
+        );
+        if (ex.post) setPosttemp4(ex.post);
         if (ex.company) setCompanytemp4(ex.company);
-        if (ex.responsibilities.length > 0) setWorkdonetemp4(ex.responsibilities.slice(0, 4));
+        if (ex.bullets.length > 0) {
+          setWorkdonetemp4(ex.bullets);
+          hasMeaningfulEmployment = true;
+        }
       }
       if (data.experiences.length > 1) {
-        const ex = data.experiences[1];
-        if (ex.role) setPost2temp4(ex.dateRange ? `${ex.role} | ${ex.dateRange}` : ex.role);
+        const ex = normalizeTemplate4Experience(
+          data.experiences[1],
+          "Professional Experience",
+          splitParagraphToBullets(data.highlights?.join(". "), 3)
+        );
+        if (ex.post) setPost2temp4(ex.post);
         if (ex.company) setCompany2temp4(ex.company);
-        if (ex.responsibilities.length > 0) setWorkdone2temp4(ex.responsibilities.slice(0, 4));
+        if (ex.bullets.length > 0) {
+          setWorkdone2temp4(ex.bullets);
+          hasMeaningfulEmployment = true;
+        }
+      }
+      if (!hasMeaningfulEmployment) {
+        setPosttemp4("Please add your data");
+        setCompanytemp4("");
+        setWorkdonetemp4(["Please add your employment history details."]);
+        setPost2temp4("");
+        setCompany2temp4("");
+        setWorkdone2temp4([]);
       }
       if (data.education.degree) setFacultytemp4(data.education.date ? `${data.education.degree} | ${data.education.date}` : data.education.degree);
       if (data.education.school) setCollegetemp4(data.education.school);
@@ -3038,6 +3153,49 @@ const Fill_cv = () => {
   ]);
   const handleCertTemp4Change = (i, v) => { const arr = [...certstemp4]; arr[i] = v; setCertstemp4(arr); };
 
+  const resetTemplate4 = () => {
+    if (!window.confirm('Reset template to default? All your edits will be cleared.')) return;
+    setNametemp4("RAVINDRA RACHIN");
+    setProfessiontemp4("Oracle applications DBA");
+    setAddresstemp4("Chennai, India");
+    setPhonetemp4("+91-9876543210");
+    setEmailtemp4("ravindra@gmail.com");
+    setLinkedintemp4("linkedin.com/in/ravindra");
+    setSkillstemp4([
+      { name: "big data", level: 90 },
+      { name: "C++", level: 85 },
+      { name: "charts", level: 80 },
+      { name: "Circuit design", level: 75 },
+      { name: "hardware", level: 70 },
+    ]);
+    setLanguagesTemp4([
+      { name: "Hindi", level: 100 },
+      { name: "English", level: 90 },
+      { name: "Tamil", level: 85 },
+    ]);
+    setSummarytemp4("Dedicated Oracle Applications Database Administrator with extensive experience in managing, optimizing, and securing Oracle databases. Proven track record in performance tuning, backup strategies, and ensuring high availability of critical systems.");
+    setPosttemp4("Oracle Database Administrator | Apr 2021 - Present");
+    setCompanytemp4("UNO Corporations, Chennai");
+    setWorkdonetemp4([
+      "Managed and maintained Oracle 19c databases for enterprise applications.",
+      "Implemented backup and recovery strategies ensuring 99.9% uptime.",
+      "Performed performance tuning and optimization of complex queries.",
+    ]);
+    setPost2temp4("Junior Oracle Applications DBA | Jun 2019 - Mar 2021");
+    setCompany2temp4("Jarvis Industries, Chennai");
+    setWorkdone2temp4([
+      "Assisted in database administration and monitoring tasks.",
+      "Participated in migration projects from Oracle 11g to 19c.",
+      "Maintained documentation and change management records.",
+    ]);
+    setFacultytemp4("B.Tech in Computer Science | 2019");
+    setCollegetemp4("Indian Institute Of Technology Madras");
+    setCertstemp4([
+      "Oracle Database Administrator Certified Associate (OCA)",
+      "Oracle E-Business Suite R12 Certification",
+    ]);
+  };
+
   //end of the states of the temp4
 
   //states for the temp5
@@ -3648,21 +3806,51 @@ const Fill_cv = () => {
       if (!t3.edu1Desc && data.education.school) setEdu1desctemp3(data.education.school);
     } else if (templateId === 4) {
       if (data.profession) setProfessiontemp4(data.profession);
-      if (data.summary) setSummarytemp4(data.summary);
+      if (data.summary) setSummarytemp4(plainToRichHtml(toReadableParagraph(data.summary)));
       if (data.skills.length > 0) {
         setSkillstemp4(data.skills.slice(0, 5).map((name, i) => ({ name, level: 90 - i * 5 })));
       }
+      const summaryBullets = splitParagraphToBullets(data.summary, 4);
+      setPosttemp4('');
+      setCompanytemp4('');
+      setWorkdonetemp4([]);
+      setPost2temp4('');
+      setCompany2temp4('');
+      setWorkdone2temp4([]);
+      let hasMeaningfulEmployment = false;
       if (data.experiences.length > 0) {
-        const ex = data.experiences[0];
-        if (ex.role) setPosttemp4(ex.dateRange ? `${ex.role} | ${ex.dateRange}` : ex.role);
+        const ex = normalizeTemplate4Experience(
+          data.experiences[0],
+          data.profession || "Professional Experience",
+          summaryBullets
+        );
+        if (ex.post) setPosttemp4(ex.post);
         if (ex.company) setCompanytemp4(ex.company);
-        if (ex.responsibilities.length > 0) setWorkdonetemp4(ex.responsibilities.slice(0, 4));
+        if (ex.bullets.length > 0) {
+          setWorkdonetemp4(ex.bullets);
+          hasMeaningfulEmployment = true;
+        }
       }
       if (data.experiences.length > 1) {
-        const ex = data.experiences[1];
-        if (ex.role) setPost2temp4(ex.dateRange ? `${ex.role} | ${ex.dateRange}` : ex.role);
+        const ex = normalizeTemplate4Experience(
+          data.experiences[1],
+          "Professional Experience",
+          splitParagraphToBullets(data.highlights?.join(". "), 3)
+        );
+        if (ex.post) setPost2temp4(ex.post);
         if (ex.company) setCompany2temp4(ex.company);
-        if (ex.responsibilities.length > 0) setWorkdone2temp4(ex.responsibilities.slice(0, 4));
+        if (ex.bullets.length > 0) {
+          setWorkdone2temp4(ex.bullets);
+          hasMeaningfulEmployment = true;
+        }
+      }
+      if (!hasMeaningfulEmployment) {
+        setPosttemp4("Please add your data");
+        setCompanytemp4("");
+        setWorkdonetemp4(["Please add your employment history details."]);
+        setPost2temp4("");
+        setCompany2temp4("");
+        setWorkdone2temp4([]);
       }
       if (data.education.degree) setFacultytemp4(data.education.date ? `${data.education.degree} | ${data.education.date}` : data.education.degree);
       if (data.education.school) setCollegetemp4(data.education.school);
@@ -7296,8 +7484,38 @@ const Fill_cv = () => {
               Reset template
             </button>
           )}
+          {templateId === 4 && (
+            <button
+              type="button"
+              onClick={resetTemplate4}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold shadow-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reset template
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowDownloadOptions((s) => !s)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-semibold shadow-lg transition-colors"
+            aria-expanded={showDownloadOptions}
+            aria-controls="download-options-panel"
+            title={showDownloadOptions ? "Hide download options" : "Show download options"}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {showDownloadOptions ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              )}
+            </svg>
+            {showDownloadOptions ? "Hide downloads" : "Show downloads"}
+          </button>
           {/* Download Options */}
-          <div className={`bg-white rounded-xl shadow-lg border border-slate-100 p-4 md:p-5 flex flex-col gap-3 transition-all duration-300 ${
+          {showDownloadOptions && (
+          <div id="download-options-panel" className={`bg-white rounded-xl shadow-lg border border-slate-100 p-4 md:p-5 flex flex-col gap-3 transition-all duration-300 ${
             isDownloading ? 'opacity-75 pointer-events-none' : ''
           }`}>
             <div className="flex items-center gap-2 mb-2">
@@ -7370,23 +7588,23 @@ const Fill_cv = () => {
                 <p className="text-xs text-gray-600 text-center mt-1">{downloadProgress}%</p>
               </div>
             )}
-          </div>
-
-          {/* Quality Info Tooltip - Hidden on mobile */}
-          <div className="hidden md:block bg-blue-50 border border-blue-200 rounded-lg p-3 max-w-xs">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="text-xs font-semibold text-blue-900 mb-1">High Quality Export</p>
-                <p className="text-xs text-blue-700">
-                  PDF: Print-ready (300 DPI equivalent)<br/>
-                  PNG: Maximum quality image
-                </p>
+            {/* Quality Info Tooltip - Hidden on mobile */}
+            <div className="hidden md:block bg-blue-50 border border-blue-200 rounded-lg p-3 max-w-xs">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-xs font-semibold text-blue-900 mb-1">High Quality Export</p>
+                  <p className="text-xs text-blue-700">
+                    PDF: Print-ready (300 DPI equivalent)<br/>
+                    PNG: Maximum quality image
+                  </p>
+                </div>
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>
