@@ -58,6 +58,16 @@
     "noAccount": "Don't have an account?",
     "registerFirst": "Register first"
   },
+  "forgotPassword": {
+    "title": "Set a new password",
+    "subtitle": "Enter your email and a new password (local development).",
+    "newPassword": "New password",
+    "confirmNew": "Confirm new password",
+    "submit": "Update password",
+    "saving": "Saving…",
+    "devNote": "Works when the API runs with DEBUG=True. For production, use email reset or contact support.",
+    "backToLogin": "Back to login"
+  },
   "register": {
     "createAccount": "Create Account",
     "username": "Username",

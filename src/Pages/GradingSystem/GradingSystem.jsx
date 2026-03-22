@@ -11,6 +11,81 @@ const GRADE_COLORS = {
   Excellent: 'bg-green-500 text-white',
 };
 
+const LAST_REPORT_STORAGE_KEY = 'cvGradeLastReport';
+
+/** API returns one overall score; derive 5 bar values deterministically from it */
+function deriveMetricsFromScore(overall) {
+  const s = Math.max(0, Math.min(100, Number(overall) || 0));
+  const deltas = [-4, 7, -6, 5, 2];
+  const labels = [
+    'Content Quality',
+    'Format & Design',
+    'ATS Compatibility',
+    'Keyword Optimization',
+    'Industry Relevance',
+  ];
+  const colors = [
+    'bg-blue-500',
+    'bg-purple-500',
+    'bg-green-500',
+    'bg-orange-500',
+    'bg-pink-500',
+  ];
+  return labels.map((label, i) => ({
+    label,
+    value: Math.max(0, Math.min(100, Math.round(s + deltas[i]))),
+    color: colors[i],
+  }));
+}
+
+/** Map 0–100 to letter display for the summary badge */
+function scoreToLetterGrade(score) {
+  const n = Number(score) || 0;
+  if (n >= 97) return 'A+';
+  if (n >= 93) return 'A';
+  if (n >= 90) return 'A-';
+  if (n >= 87) return 'B+';
+  if (n >= 83) return 'B';
+  if (n >= 80) return 'B-';
+  if (n >= 77) return 'C+';
+  if (n >= 73) return 'C';
+  if (n >= 70) return 'C-';
+  if (n >= 65) return 'D+';
+  if (n >= 60) return 'D';
+  return 'F';
+}
+
+function loadLastReport() {
+  try {
+    const raw = localStorage.getItem(LAST_REPORT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.score === 'number' && Array.isArray(parsed.metrics)) {
+      return parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function saveLastReport({ score, grade, metrics, fileName }) {
+  try {
+    localStorage.setItem(
+      LAST_REPORT_STORAGE_KEY,
+      JSON.stringify({
+        score,
+        grade,
+        metrics,
+        fileName: fileName || null,
+        gradedAt: new Date().toISOString(),
+      })
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
 const GradingSystem = () => {
   const navigate = useNavigate();
   const { isAuthenticated, isGuest, enableGuestMode } = useAuth();
@@ -23,6 +98,8 @@ const GradingSystem = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [gradeResult, setGradeResult] = useState(null);
   const [gradeError, setGradeError] = useState('');
+  /** Last successful grade (persisted) — powers "Live Grading Metrics" when not mid-upload */
+  const [lastReport, setLastReport] = useState(null);
 
   // Create object URL for PDF preview and clean up on unmount/clear
   useEffect(() => {
@@ -34,6 +111,10 @@ const GradingSystem = () => {
       setFilePreviewUrl(null);
     }
   }, [uploadedFile]);
+
+  useEffect(() => {
+    setLastReport(loadLastReport());
+  }, []);
 
   useEffect(() => {
     // Trigger animation when component mounts
@@ -110,14 +191,6 @@ const GradingSystem = () => {
     }
   ];
 
-  const gradingMetrics = [
-    { label: "Content Quality", value: 85, color: "bg-blue-500" },
-    { label: "Format & Design", value: 92, color: "bg-purple-500" },
-    { label: "ATS Compatibility", value: 78, color: "bg-green-500" },
-    { label: "Keyword Optimization", value: 88, color: "bg-orange-500" },
-    { label: "Industry Relevance", value: 90, color: "bg-pink-500" }
-  ];
-
   const isValidFileType = (file) => {
     const validTypes = [
       'application/pdf',
@@ -144,12 +217,18 @@ const GradingSystem = () => {
       if (!res.ok) {
         throw new Error(data.error || data.detail || data.message || `Request failed (${res.status})`);
       }
+      const score = data.score ?? 0;
+      const grade = data.grade ?? 'Average';
+      const metrics = deriveMetricsFromScore(score);
       setGradeResult({
-        score: data.score ?? 0,
-        grade: data.grade ?? 'Average',
+        score,
+        grade,
         suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
         enhanced_resume: data.enhanced_resume ?? '',
       });
+      const snapshot = { score, grade, metrics, fileName: file?.name };
+      saveLastReport(snapshot);
+      setLastReport(snapshot);
     } catch (err) {
       setGradeError(err.message || 'Failed to grade CV. Check backend and CORS.');
     } finally {
@@ -223,13 +302,19 @@ const GradingSystem = () => {
       if (!res.ok) {
         throw new Error(data.error || data.detail || data.message || `Request failed (${res.status})`);
       }
+      const score = data.score ?? 0;
+      const grade = data.grade ?? 'Average';
+      const metrics = deriveMetricsFromScore(score);
       setGradeResult({
-        score: data.score ?? 0,
-        grade: data.grade ?? 'Average',
+        score,
+        grade,
         suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
         enhanced_resume: data.enhanced_resume ?? gradeResult.enhanced_resume,
         previousScore: previousScore,
       });
+      const snapshot = { score, grade, metrics, fileName: uploadedFile?.name || null };
+      saveLastReport(snapshot);
+      setLastReport(snapshot);
     } catch (err) {
       setGradeError(err.message || 'Failed to regrade. Check backend and CORS.');
     } finally {
@@ -276,6 +361,23 @@ const GradingSystem = () => {
       </div>
     );
   }
+
+  const reportActiveScore = gradeResult?.score ?? lastReport?.score;
+  const reportActiveGrade = gradeResult?.grade ?? lastReport?.grade;
+  const reportDisplayMetrics =
+    gradeResult != null
+      ? deriveMetricsFromScore(gradeResult.score)
+      : lastReport?.metrics?.length
+        ? lastReport.metrics
+        : [];
+  const reportHasData = reportDisplayMetrics.length > 0 && reportActiveScore != null;
+  const reportLetter = scoreToLetterGrade(reportActiveScore);
+  const reportGradedLabel = lastReport?.gradedAt
+    ? new Date(lastReport.gradedAt).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    : null;
 
   return (
     <div className="bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 py-20 relative overflow-hidden">
@@ -345,21 +447,41 @@ const GradingSystem = () => {
           ))}
         </div>
 
-        {/* Grading Metrics Visualization */}
+        {/* Grading Metrics — last real report (localStorage) or current session */}
         <div className="bg-white rounded-2xl shadow-2xl p-8 mb-16 transform hover:scale-[1.02] transition-all duration-300">
-          <div className="flex items-center justify-center gap-3 mb-8">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h3 className="text-3xl font-bold text-gray-800">
-              Live Grading Metrics
-            </h3>
+            <div className="text-center sm:text-left">
+              <h3 className="text-3xl font-bold text-gray-800">
+                {reportHasData ? 'Your last CV report' : 'Grading metrics'}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {reportHasData
+                  ? gradeResult
+                    ? 'Updated from your latest analysis below'
+                    : reportGradedLabel
+                      ? `Last graded: ${reportGradedLabel}${lastReport?.fileName ? ` · ${lastReport.fileName}` : ''}`
+                      : 'Saved from your last analysis'
+                  : 'Upload a resume below — your scores will appear here'}
+              </p>
+            </div>
           </div>
+          {!reportHasData ? (
+            <div className="py-12 text-center text-gray-500 border-2 border-dashed border-gray-200 rounded-xl">
+              <p className="font-medium">No grading report yet</p>
+              <p className="text-sm mt-2 max-w-md mx-auto">
+                After you upload and analyze a CV, this panel shows your latest scores (stored in this browser).
+              </p>
+            </div>
+          ) : (
+          <>
           <div className="space-y-6">
-            {gradingMetrics.map((metric, index) => (
-              <div key={index} className="space-y-2 group">
+            {reportDisplayMetrics.map((metric, index) => (
+              <div key={metric.label} className="space-y-2 group">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
                     {metric.label}
@@ -380,9 +502,9 @@ const GradingSystem = () => {
                 <div className="w-full h-5 bg-gray-200 rounded-full overflow-hidden relative">
                   <div
                     className={`h-full ${metric.color} rounded-full transition-all duration-1000 ease-out relative`}
-                    style={{ 
+                    style={{
                       width: animatedMetrics ? `${metric.value}%` : '0%',
-                      transitionDelay: `${index * 100}ms`
+                      transitionDelay: `${index * 100}ms`,
                     }}
                   >
                     <div className="absolute inset-0 bg-white bg-opacity-30 animate-pulse"></div>
@@ -397,12 +519,16 @@ const GradingSystem = () => {
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                 </svg>
-                <div className="text-5xl font-bold">A+</div>
+                <div className="text-5xl font-bold">{reportLetter}</div>
               </div>
-              <div className="text-xl font-semibold">Overall Grade</div>
-              <div className="text-sm mt-2 opacity-90">Based on 5 Key Metrics</div>
+              <div className="text-xl font-semibold">Overall: {reportActiveGrade}</div>
+              <div className="text-sm mt-2 opacity-90">
+                Score {reportActiveScore}/100 · Based on 5 derived metrics from your analysis
+              </div>
             </div>
           </div>
+          </>
+          )}
         </div>
 
         {/* PDF Uploader Section - Grading is free; "Use in Template" requires NRS 500 */}

@@ -2,8 +2,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../Navbar/Navbar";
 import Footer from "../Footer/Footer";
-import API_CONFIG, { getApiUrl, fetchWithAuth } from "../../config/api";
+import API_CONFIG, {
+  getApiUrl,
+  fetchWithAuth,
+  ADMIN_PRIMARY_EMAIL,
+} from "../../config/api";
 import { useAuth } from "../../context/AuthContext";
+import AdminJobsPanel from "./AdminJobsPanel";
 
 const USERS_URL = () => getApiUrl(API_CONFIG.ENDPOINTS.ADMIN_USERS);
 
@@ -44,8 +49,12 @@ function formatApiErrors(data) {
 
 const Admin = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isGuest } = useAuth();
-  const isStaff = user?.is_staff === true;
+  const { isAuthenticated, isGuest, refreshUserProfile } = useAuth();
+
+  /** Backend is the source of truth: only staff can GET /api/auth/admin/users/. */
+  const [adminGate, setAdminGate] = useState(
+    "checking"
+  ); // 'signed_out' | 'checking' | 'allowed' | 'denied'
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +64,59 @@ const Admin = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [adminTab, setAdminTab] = useState("users"); // 'users' | 'jobs'
+
+  const verifyAdminAccess = useCallback(async () => {
+    setError("");
+    setLoading(true);
+    await refreshUserProfile();
+    try {
+      const res = await fetchWithAuth(USERS_URL(), { method: "GET" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setAdminGate("allowed");
+        setUsers(Array.isArray(data) ? data : []);
+        return;
+      }
+      if (res.status === 403) {
+        setAdminGate("denied");
+        setUsers([]);
+        setError("");
+        return;
+      }
+      if (res.status === 401) {
+        setAdminGate("denied");
+        setUsers([]);
+        setError("Session expired. Log out and log in again.");
+        return;
+      }
+      setAdminGate("denied");
+      setUsers([]);
+      setError(formatApiErrors(data));
+    } catch (e) {
+      setAdminGate("denied");
+      setUsers([]);
+      const m = e.message || "";
+      setError(
+        m.includes("fetch") || m.includes("Failed")
+          ? "Cannot reach the API. Start the backend: in Terminal go to your Back_Back folder, activate .venv, then run: python manage.py runserver — then open http://localhost:8000 to confirm it loads."
+          : m || "Something went wrong."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshUserProfile]);
+
+  useEffect(() => {
+    if (!isAuthenticated || isGuest) {
+      setAdminGate("signed_out");
+      setLoading(false);
+      return undefined;
+    }
+    setAdminGate("checking");
+    verifyAdminAccess();
+    return undefined;
+  }, [isAuthenticated, isGuest, verifyAdminAccess]);
 
   const loadUsers = useCallback(async () => {
     setError("");
@@ -75,14 +137,6 @@ const Admin = () => {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (isAuthenticated && !isGuest && isStaff) {
-      loadUsers();
-    } else {
-      setLoading(false);
-    }
-  }, [isAuthenticated, isGuest, isStaff, loadUsers]);
 
   const openAdd = () => {
     setForm(emptyForm);
@@ -246,20 +300,74 @@ const Admin = () => {
     );
   }
 
-  if (!isStaff) {
+  if (adminGate === "checking") {
     return (
       <div className="min-h-screen flex flex-col bg-gray-50">
         <Navbar />
-        <main className="flex-1 max-w-lg mx-auto w-full px-4 py-16 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Access denied</h1>
-          <p className="text-gray-600 mb-6">
-            Your account does not have staff permissions. User management is
-            only available to staff. Ask a superuser to enable{" "}
-            <strong>Staff status</strong> for your user in Django Admin.
-          </p>
-          <Link to="/" className="text-blue-600 font-medium hover:underline">
-            Back to home
-          </Link>
+        <main className="flex-1 flex items-center justify-center px-4 py-16">
+          <p className="text-gray-600">Opening admin…</p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (adminGate === "denied") {
+    const isNetworkError =
+      typeof error === "string" &&
+      (error.includes("Cannot reach") || error.includes("fetch"));
+    return (
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Navbar />
+        <main className="flex-1 max-w-md mx-auto w-full px-4 py-12 text-center">
+          <div className="bg-white rounded-2xl shadow border border-gray-100 p-8">
+            <h1 className="text-xl font-bold text-gray-900 mb-3">Admin</h1>
+            {isNetworkError ? (
+              <p className="text-gray-600 text-sm mb-4">
+                The website can’t talk to the API. Start your Django server, then click{" "}
+                <strong>Try again</strong>.
+              </p>
+            ) : (
+              <p className="text-gray-600 text-sm mb-4">
+                Sign in with your admin email, then open this page again.
+              </p>
+            )}
+            <p className="text-xs text-gray-500 mb-4">
+              Admin login:{" "}
+              <span className="font-mono text-gray-700">{ADMIN_PRIMARY_EMAIL}</span>
+            </p>
+            {error && (
+              <div className="mb-5 p-3 bg-amber-50 border border-amber-100 text-amber-950 rounded-lg text-xs text-left">
+                {error}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminGate("checking");
+                  verifyAdminAccess();
+                }}
+                className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-700"
+              >
+                Try again
+              </button>
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
+              >
+                Log in
+              </Link>
+            </div>
+            <a
+              href={djangoAdminUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-block text-sm text-blue-600 hover:underline"
+            >
+              Open Django Admin →
+            </a>
+          </div>
         </main>
         <Footer />
       </div>
@@ -270,26 +378,54 @@ const Admin = () => {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <div>
             <p className="text-sm font-semibold text-blue-600 uppercase tracking-wide">
               Administration
             </p>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-              User management
+              {adminTab === "users" ? "Users" : "Jobs"}
             </h1>
             <p className="text-gray-600 text-sm mt-1">
-              Add, edit, or remove users. Requires a staff account (JWT).
+              {adminTab === "users"
+                ? "Add, edit, or remove user accounts."
+                : "Manage job postings (CRUD). Active jobs show on Find Jobs."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={openAdd}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 shadow"
-            >
-              Add user
-            </button>
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 mr-1">
+              <button
+                type="button"
+                onClick={() => setAdminTab("users")}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold ${
+                  adminTab === "users"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                Users
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminTab("jobs")}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold ${
+                  adminTab === "jobs"
+                    ? "bg-emerald-600 text-white"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                Jobs
+              </button>
+            </div>
+            {adminTab === "users" && (
+              <button
+                type="button"
+                onClick={openAdd}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 shadow"
+              >
+                Add user
+              </button>
+            )}
             <a
               href={djangoAdminUrl}
               target="_blank"
@@ -301,84 +437,89 @@ const Admin = () => {
           </div>
         </div>
 
-        {error && (
+        {error && adminTab === "users" && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm">
             {error}
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-100 text-gray-700">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold">Email</th>
-                  <th className="text-left px-4 py-3 font-semibold">Username</th>
-                  <th className="text-left px-4 py-3 font-semibold">Role</th>
-                  <th className="text-center px-2 py-3 font-semibold">Active</th>
-                  <th className="text-center px-2 py-3 font-semibold">Staff</th>
-                  <th className="text-center px-2 py-3 font-semibold">Super</th>
-                  <th className="text-right px-4 py-3 font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                      Loading users…
-                    </td>
-                  </tr>
-                ) : users.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                      No users found.
-                    </td>
-                  </tr>
-                ) : (
-                  users.map((u) => (
-                    <tr key={u.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-900 max-w-[200px] truncate">
-                        {u.email}
-                      </td>
-                      <td className="px-4 py-3">{u.username}</td>
-                      <td className="px-4 py-3">{u.role}</td>
-                      <td className="px-2 py-3 text-center">
-                        {u.is_active ? "✓" : "—"}
-                      </td>
-                      <td className="px-2 py-3 text-center">
-                        {u.is_staff ? "✓" : "—"}
-                      </td>
-                      <td className="px-2 py-3 text-center">
-                        {u.is_superuser ? "✓" : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(u)}
-                          className="text-blue-600 hover:underline font-medium mr-3"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(u)}
-                          className="text-red-600 hover:underline font-medium"
-                        >
-                          Delete
-                        </button>
-                      </td>
+        {adminTab === "users" && (
+          <>
+            <div className="bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-100 text-gray-700">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-semibold">Email</th>
+                      <th className="text-left px-4 py-3 font-semibold">Username</th>
+                      <th className="text-left px-4 py-3 font-semibold">Role</th>
+                      <th className="text-center px-2 py-3 font-semibold">Active</th>
+                      <th className="text-center px-2 py-3 font-semibold">Staff</th>
+                      <th className="text-center px-2 py-3 font-semibold">Super</th>
+                      <th className="text-right px-4 py-3 font-semibold">Actions</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                          Loading users…
+                        </td>
+                      </tr>
+                    ) : users.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                          No users found.
+                        </td>
+                      </tr>
+                    ) : (
+                      users.map((u) => (
+                        <tr key={u.id} className="border-t border-gray-100 hover:bg-gray-50">
+                          <td className="px-4 py-3 text-gray-900 max-w-[200px] truncate">
+                            {u.email}
+                          </td>
+                          <td className="px-4 py-3">{u.username}</td>
+                          <td className="px-4 py-3">{u.role}</td>
+                          <td className="px-2 py-3 text-center">
+                            {u.is_active ? "✓" : "—"}
+                          </td>
+                          <td className="px-2 py-3 text-center">
+                            {u.is_staff ? "✓" : "—"}
+                          </td>
+                          <td className="px-2 py-3 text-center">
+                            {u.is_superuser ? "✓" : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(u)}
+                              className="text-blue-600 hover:underline font-medium mr-3"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(u)}
+                              className="text-red-600 hover:underline font-medium"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-        <p className="text-xs text-gray-500 mt-4">
-          Non-superuser staff only see and manage non-superuser accounts.
-          Superusers can manage everyone and assign staff/superuser flags.
-        </p>
+            <p className="text-xs text-gray-500 mt-4">
+              Non-superuser staff only see non-superuser accounts. Superusers see everyone.
+            </p>
+          </>
+        )}
+
+        {adminTab === "jobs" && <AdminJobsPanel />}
       </main>
 
       {/* Add / Edit modal */}

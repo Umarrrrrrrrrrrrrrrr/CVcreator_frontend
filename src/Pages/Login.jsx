@@ -146,9 +146,12 @@ const Login = () => {
 
             {/* Forgot Password */}
             <div className="flex items-center justify-end">
-              <a href="#" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
                 {t("login.forgotPassword")}
-              </a>
+              </Link>
             </div>
 
             {/* Submit Button */}

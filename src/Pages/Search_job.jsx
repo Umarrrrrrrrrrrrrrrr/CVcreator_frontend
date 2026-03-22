@@ -3,11 +3,25 @@ import Naavbar from "./Naavbar";
 import { getApiUrl, fetchWithAuth } from "../config/api";
 import API_CONFIG from "../config/api";
 
+/** API returns `skills` as [{ id, name }, ...]; UI expects a comma string for .split(',') */
+function skillsToLabelString(skills, requiredSkills) {
+  if (requiredSkills != null && typeof requiredSkills === "string") return requiredSkills;
+  if (!skills) return "";
+  if (Array.isArray(skills)) {
+    return skills
+      .map((s) => (typeof s === "string" ? s : s?.name ?? ""))
+      .filter(Boolean)
+      .join(", ");
+  }
+  return String(skills);
+}
+
 const normalizeJob = (raw) => {
   if (!raw) return null;
   const salaryMin = raw.salary_min ?? raw.salaryMin;
   const salaryMax = raw.salary_max ?? raw.salaryMax;
-  const employmentType = (raw.employment_type ?? raw.employmentType ?? "").replace("_", "-");
+  const emp = raw.employment_type ?? raw.employmentType ?? "";
+  const employmentType = String(emp).replace(/_/g, "-");
   let salaryRange = raw.salary_range ?? raw.salaryRange ?? null;
   if (!salaryRange && (salaryMin != null || salaryMax != null)) {
     const min = salaryMin != null ? Number(salaryMin).toLocaleString() : "?";
@@ -19,13 +33,13 @@ const normalizeJob = (raw) => {
     jobTitle: raw.job_title ?? raw.jobTitle,
     companyName: raw.company_name ?? raw.companyName,
     location: raw.location,
-    employmentType: employmentType || raw.employmentType,
+    employmentType: employmentType || raw.employmentType || "",
     salaryRange,
     salaryMin: raw.salary_min ?? raw.salaryMin,
     salaryMax: raw.salary_max ?? raw.salaryMax,
     jobDescription: raw.job_description ?? raw.jobDescription,
     requirements: raw.requirements,
-    skills: raw.required_skills ?? raw.skills,
+    skills: skillsToLabelString(raw.skills, raw.required_skills),
     remoteOption: raw.is_remote ?? raw.remoteOption ?? false,
     postedDate: raw.posted_date ?? raw.created_at ?? raw.postedDate,
     applicationDeadline: raw.application_deadline ?? raw.applicationDeadline,
@@ -35,7 +49,6 @@ const normalizeJob = (raw) => {
 const Search_job = () => {
   const [jobs, setJobs] = useState([]);
   const [filteredJobs, setFilteredJobs] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -55,10 +68,12 @@ const Search_job = () => {
   const [jobTypeFilter, setJobTypeFilter] = useState("");
   const [salaryFilter, setSalaryFilter] = useState("");
   const [searchParams, setSearchParams] = useState({ search: "", location: "", employment_type: "" });
+  const [loadError, setLoadError] = useState("");
 
   const fetchJobs = useCallback(async (params) => {
     try {
       setLoading(true);
+      setLoadError("");
       const q = new URLSearchParams();
       if (params.search) q.set("search", params.search);
       if (params.location) q.set("location", params.location);
@@ -66,20 +81,22 @@ const Search_job = () => {
       const url = `${getApiUrl(API_CONFIG.ENDPOINTS.JOBS)}?${q.toString()}`;
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`Jobs API error: ${response.status}`);
+        throw new Error(`Jobs API returned ${response.status}`);
       }
       const data = await response.json();
       const results = Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : [];
       const normalized = results.map(normalizeJob).filter(Boolean);
       setJobs(normalized);
       setFilteredJobs(normalized);
-      setTotalCount(typeof data.count === "number" ? data.count : normalized.length);
     } catch (error) {
       console.error("Error fetching jobs:", error);
-      const mockJobs = getMockJobs();
-      setJobs(mockJobs);
-      setFilteredJobs(mockJobs);
-      setTotalCount(mockJobs.length);
+      setJobs([]);
+      setFilteredJobs([]);
+      setLoadError(
+        error.message?.includes("fetch") || error.message?.includes("Failed")
+          ? `Cannot reach the API at ${getApiUrl("")}. Start the Django backend: run "python manage.py runserver" in your Back_Back folder, then refresh this page.`
+          : error.message || "Failed to load jobs."
+      );
     } finally {
       setLoading(false);
     }
@@ -96,80 +113,6 @@ const Search_job = () => {
       employment_type: jobTypeFilter ? jobTypeFilter.replace("-", "_") : "",
     });
   };
-
-  // Mock jobs data for development/testing
-  const getMockJobs = () => [
-    {
-      id: 1,
-      jobTitle: "Senior Software Engineer",
-      companyName: "Tech Innovations Inc.",
-      location: "San Francisco, CA",
-      employmentType: "Full-time",
-      salaryRange: "$120,000 - $160,000",
-      jobDescription: "We are looking for an experienced Senior Software Engineer to join our dynamic team. You will be responsible for designing, developing, and maintaining scalable web applications.",
-      requirements: "5+ years of experience in software development\nStrong knowledge of React, Node.js, and TypeScript\nExperience with cloud platforms (AWS, Azure)\nExcellent problem-solving skills",
-      skills: "React, Node.js, TypeScript, AWS, PostgreSQL",
-      remoteOption: true,
-      postedDate: "2024-01-15",
-      applicationDeadline: "2024-02-15"
-    },
-    {
-      id: 2,
-      jobTitle: "UX/UI Designer",
-      companyName: "Creative Solutions",
-      location: "New York, NY",
-      employmentType: "Full-time",
-      salaryRange: "$80,000 - $110,000",
-      jobDescription: "Join our design team to create beautiful and intuitive user experiences. You'll work closely with product managers and developers to bring designs to life.",
-      requirements: "3+ years of UX/UI design experience\nProficiency in Figma, Sketch, Adobe XD\nStrong portfolio demonstrating design skills\nUnderstanding of user research methodologies",
-      skills: "Figma, Sketch, Adobe XD, User Research, Prototyping",
-      remoteOption: false,
-      postedDate: "2024-01-14",
-      applicationDeadline: "2024-02-20"
-    },
-    {
-      id: 3,
-      jobTitle: "Data Scientist",
-      companyName: "Analytics Pro",
-      location: "Remote",
-      employmentType: "Full-time",
-      salaryRange: "$100,000 - $140,000",
-      jobDescription: "We're seeking a talented Data Scientist to help us extract insights from complex datasets and build predictive models.",
-      requirements: "Master's degree in Data Science or related field\n3+ years of experience in machine learning\nProficiency in Python, R, SQL\nExperience with TensorFlow or PyTorch",
-      skills: "Python, R, SQL, Machine Learning, TensorFlow, Data Visualization",
-      remoteOption: true,
-      postedDate: "2024-01-13",
-      applicationDeadline: "2024-02-10"
-    },
-    {
-      id: 4,
-      jobTitle: "Product Manager",
-      companyName: "Innovate Tech",
-      location: "Austin, TX",
-      employmentType: "Full-time",
-      salaryRange: "$110,000 - $150,000",
-      jobDescription: "Lead product development initiatives and work with cross-functional teams to deliver innovative solutions.",
-      requirements: "5+ years of product management experience\nStrong analytical and strategic thinking\nExcellent communication skills\nExperience with Agile methodologies",
-      skills: "Product Strategy, Agile, Analytics, Roadmapping",
-      remoteOption: true,
-      postedDate: "2024-01-12",
-      applicationDeadline: "2024-02-25"
-    },
-    {
-      id: 5,
-      jobTitle: "Marketing Specialist",
-      companyName: "Digital Marketing Hub",
-      location: "Los Angeles, CA",
-      employmentType: "Full-time",
-      salaryRange: "$60,000 - $85,000",
-      jobDescription: "Develop and execute marketing campaigns across various channels to drive brand awareness and customer acquisition.",
-      requirements: "2+ years of marketing experience\nKnowledge of SEO, SEM, and social media marketing\nStrong writing and communication skills\nExperience with marketing analytics tools",
-      skills: "SEO, SEM, Social Media, Content Marketing, Google Analytics",
-      remoteOption: false,
-      postedDate: "2024-01-11",
-      applicationDeadline: "2024-02-18"
-    }
-  ];
 
   // Client-side filter by salary only (search/location/employment are sent to API)
   useEffect(() => {
@@ -250,8 +193,10 @@ const Search_job = () => {
   };
 
   const formatDate = (dateString) => {
+    if (dateString == null || dateString === "") return "—";
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    if (Number.isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   };
 
   return (
@@ -259,6 +204,20 @@ const Search_job = () => {
       <Naavbar />
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {loadError && (
+          <div className="mb-6 p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-sm">
+            <p className="font-semibold mb-2">Could not load jobs from your database</p>
+            <p className="mb-3">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => fetchJobs(searchParams)}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">Find Your Dream Job</h1>
@@ -351,7 +310,11 @@ const Search_job = () => {
         {/* Results Count */}
         <div className="mb-4">
           <p className="text-gray-600">
-            {loading ? "Loading jobs..." : `Found ${totalCount} job${totalCount !== 1 ? "s" : ""}`}
+            {loading
+              ? "Loading jobs..."
+              : loadError
+                ? "0 jobs (API unavailable)"
+                : `Found ${filteredJobs.length} job${filteredJobs.length !== 1 ? "s" : ""}`}
           </p>
         </div>
 
@@ -363,8 +326,14 @@ const Search_job = () => {
           </div>
         ) : filteredJobs.length === 0 ? (
           <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-            <p className="text-xl text-gray-600 mb-2">No jobs found</p>
-            <p className="text-gray-500">Try adjusting your search criteria or filters</p>
+            <p className="text-xl text-gray-600 mb-2">
+              {loadError ? "No jobs loaded" : "No jobs found"}
+            </p>
+            <p className="text-gray-500">
+              {loadError
+                ? "Fix the connection above, or check that jobs exist in the database and the API URL in your frontend config matches the backend."
+                : "Try adjusting your search criteria or filters"}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6">
@@ -393,7 +362,9 @@ const Search_job = () => {
                         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
-                        <span className="capitalize">{job.employmentType.replace('-', ' ')}</span>
+                        <span className="capitalize">
+                          {(job.employmentType || "").replace(/-/g, " ")}
+                        </span>
                       </div>
                       {job.salaryRange && (
                         <div className="flex items-center text-gray-600">
@@ -407,21 +378,28 @@ const Search_job = () => {
 
                     <p className="text-gray-600 mb-4 line-clamp-2">{job.jobDescription}</p>
 
-                    {job.skills && (
+                    {job.skills && String(job.skills).trim() !== "" && (
                       <div className="mb-4">
                         <p className="text-sm font-semibold text-gray-700 mb-2">Required Skills:</p>
                         <div className="flex flex-wrap gap-2">
-                          {job.skills.split(',').slice(0, 5).map((skill, index) => (
-                            <span
-                              key={index}
-                              className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
-                            >
-                              {skill.trim()}
-                            </span>
-                          ))}
-                          {job.skills.split(',').length > 5 && (
+                          {String(job.skills)
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                            .slice(0, 5)
+                            .map((skill, index) => (
+                              <span
+                                key={index}
+                                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                          {String(job.skills).split(",").filter((s) => s.trim()).length > 5 && (
                             <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">
-                              +{job.skills.split(',').length - 5} more
+                              +
+                              {String(job.skills).split(",").filter((s) => s.trim()).length - 5}{" "}
+                              more
                             </span>
                           )}
                         </div>
@@ -498,18 +476,22 @@ const Search_job = () => {
                 </div>
               )}
 
-              {selectedJob.skills && (
+              {selectedJob.skills && String(selectedJob.skills).trim() !== "" && (
                 <div>
                   <h3 className="text-xl font-bold text-gray-800 mb-2">Required Skills</h3>
                   <div className="flex flex-wrap gap-2">
-                    {selectedJob.skills.split(',').map((skill, index) => (
-                      <span
-                        key={index}
-                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full"
-                      >
-                        {skill.trim()}
-                      </span>
-                    ))}
+                    {String(selectedJob.skills)
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .map((skill, index) => (
+                        <span
+                          key={index}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full"
+                        >
+                          {skill}
+                        </span>
+                      ))}
                   </div>
                 </div>
               )}

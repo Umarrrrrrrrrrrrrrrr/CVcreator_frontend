@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import API_CONFIG, { getApiUrl, fetchWithAuth } from '../config/api';
 
 const AuthContext = createContext();
 
@@ -97,12 +98,42 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem(USE_IN_TEMPLATE_KEY, 'true');
   }, []);
 
+  /** Re-fetch profile from API (updates is_staff / is_superuser after backend changes). */
+  const refreshUserProfile = useCallback(async () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return null;
+    try {
+      const res = await fetchWithAuth(getApiUrl(API_CONFIG.ENDPOINTS.PROFILE), {
+        method: 'GET',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.user) return null;
+      const u = data.user;
+      setUser((prev) => {
+        const merged = {
+          ...prev,
+          ...u,
+          full_name: u.full_name ?? prev?.full_name,
+          profile_photo_url: u.profile_photo_url ?? prev?.profile_photo_url,
+          is_staff: u.is_staff === true,
+          is_superuser: u.is_superuser === true,
+        };
+        localStorage.setItem('user', JSON.stringify(merged));
+        return merged;
+      });
+      return data.user;
+    } catch {
+      return null;
+    }
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       isAuthenticated, user, login, logout,
       isPremium, upgradeToPremium,
       useInTemplateAccess, upgradeUseInTemplate,
-      isGuest, enableGuestMode, getAccessToken
+      isGuest, enableGuestMode, getAccessToken,
+      refreshUserProfile,
     }}>
       {children}
     </AuthContext.Provider>

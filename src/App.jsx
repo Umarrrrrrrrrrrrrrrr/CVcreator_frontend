@@ -1,6 +1,7 @@
 import React from "react";
 import Register from "./Pages/Register";
 import Login from "./Pages/Login";
+import ForgotPassword from "./Pages/ForgotPassword";
 import Home from "./Pages/Home";
 import Create_CV from "./Pages/Create_CV";
 import Choose_templates from "./Pages/Choose_templates";
@@ -29,6 +30,7 @@ function App() {
       <Routes>
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/" element={<Home />} />
         <Route path="/home" element={<Home />} />
         <Route path="/contact-support" element={<ContactSupport />} />
