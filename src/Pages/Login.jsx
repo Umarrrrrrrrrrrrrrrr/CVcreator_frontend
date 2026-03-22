@@ -46,6 +46,8 @@ const Login = () => {
             username: data.user?.username || formData.email.split('@')[0],
             id: data.user?.id,
             role: data.user?.role,
+            is_staff: data.user?.is_staff === true,
+            is_superuser: data.user?.is_superuser === true,
             full_name: data.user?.full_name,
             first_name: data.user?.first_name,
             last_name: data.user?.last_name,

@@ -35,6 +35,10 @@ const plainToRichHtml = (text) => {
     .join('');
 };
 
+/** Keeps hyphenated tokens (e.g. anti-virus) on one line in narrow sidebars — matches PDF onclone behavior */
+const protectHyphensForT4 = (s) =>
+  String(s || '').replace(/([a-zA-Z0-9])-([a-zA-Z0-9])/g, '$1\u2011$2');
+
 /** Convert noisy bullet-style text into one readable paragraph. */
 const toReadableParagraph = (text) => {
   if (!text || typeof text !== 'string') return '';
@@ -73,7 +77,57 @@ const splitParagraphToBullets = (text, max = 4) => {
   return [cleaned].slice(0, max);
 };
 
-const normalizeTemplate4Experience = (ex, fallbackTitle = "Professional Experience", fallbackBullets = []) => {
+const isTemplate4GenericEmploymentLine = (s) => {
+  const t = cleanJobHeaderPart(String(s || "")).toLowerCase();
+  if (!t) return true;
+  if (/\[[^\]]+\]/.test(t)) return true;
+  if (
+    /\b(results-driven professional|professional with strengths|recent experience includes|skilled in|demonstrated success|seeking to leverage expertise|add your key skills|add key achievement|add goal)\b/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  return false;
+};
+
+/** True if a bullet is only a fragment already stated in the summary (e.g. "reliable performance..") */
+const template4BulletDuplicatesSummary = (bullet, summaryPlain) => {
+  const s = String(summaryPlain || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  const b = String(bullet || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\.{2,}/g, ".")
+    .trim();
+  if (!s || !b || b.length < 10) return false;
+  if (s.includes(b)) return true;
+  if (b.length >= 18 && s.includes(b.slice(0, Math.min(48, b.length)))) return true;
+  const words = b.split(/\s+/).filter((w) => w.length > 2);
+  if (words.length >= 2 && words.length <= 8) {
+    const phrase = words.join(" ");
+    if (phrase.length >= 14 && s.includes(phrase)) return true;
+  }
+  return false;
+};
+
+const template4PostDuplicatesSummary = (post, summaryPlain) => {
+  const s = String(summaryPlain || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  const raw = String(post || "").trim();
+  if (!s || !raw || raw.length < 12) return false;
+  const p = raw.toLowerCase().replace(/\s+/g, " ");
+  if (s.includes(p)) return true;
+  const head = p.split("|")[0].trim();
+  if (head.length > 20 && s.includes(head)) return true;
+  return false;
+};
+
+const normalizeTemplate4Experience = (ex, fallbackTitle = "Professional Experience", blockedBullets = [], summaryPlain = "") => {
   const roleRaw = cleanJobHeaderPart(ex?.role || '');
   const companyRaw = cleanJobHeaderPart(ex?.company || '');
   const dateRaw = cleanJobHeaderPart(ex?.dateRange || '');
@@ -103,25 +157,93 @@ const normalizeTemplate4Experience = (ex, fallbackTitle = "Professional Experien
     date = "";
   }
 
-  const bullets = (ex?.responsibilities || [])
+  const sum = String(summaryPlain || "").trim();
+  let bullets = (ex?.responsibilities || [])
     .map((r) => toReadableParagraph(String(r || '')))
     .map((r) => cleanJobHeaderPart(r))
-    .filter((r) => r && !isEmploymentNoiseToken(r))
+    .filter((r) => r && !isEmploymentNoiseToken(r) && !isTemplate4GenericEmploymentLine(r))
+    .filter((r) => !blockedBullets.some((b) => cleanJobHeaderPart(String(b || "")).toLowerCase() === r.toLowerCase()))
+    .filter((r) => !sum || !template4BulletDuplicatesSummary(r, sum))
     .slice(0, 4);
 
   if (!role && bullets.length > 0) {
     const maybeTitle = bullets[0];
-    if (maybeTitle.length <= 80 && !/[.!?]$/.test(maybeTitle)) {
-      role = maybeTitle;
-      bullets.shift();
+    if (maybeTitle.length <= 80 && !/[.!?]$/.test(maybeTitle) && !isTemplate4GenericEmploymentLine(maybeTitle)) {
+      if (!sum || !template4BulletDuplicatesSummary(maybeTitle, sum)) {
+        role = maybeTitle;
+        bullets.shift();
+      }
     }
   }
-  if (bullets.length === 0 && fallbackBullets.length > 0) {
-    bullets.push(...fallbackBullets.slice(0, 4));
-  }
 
-  const post = date ? `${role || fallbackTitle} | ${date}` : (role || fallbackTitle);
+  let post = date ? `${role || fallbackTitle} | ${date}` : (role || fallbackTitle);
+  if (sum && template4PostDuplicatesSummary(post, sum)) {
+    post = date ? `${fallbackTitle} | ${date}` : fallbackTitle;
+  }
+  // If summary-dedupe removed every bullet, keep role duties so Employment isn't empty vs the editor
+  if (bullets.length === 0 && (ex?.responsibilities || []).length > 0) {
+    bullets = (ex.responsibilities || [])
+      .map((r) => toReadableParagraph(String(r || '')))
+      .map((r) => cleanJobHeaderPart(r))
+      .filter((r) => r && !isEmploymentNoiseToken(r) && !isTemplate4GenericEmploymentLine(r))
+      .slice(0, 4);
+  }
   return { post, company, bullets };
+};
+
+/** Plain bullets → RichTextBlock HTML (one block per bullet). */
+const template4BulletsToRichHtml = (bullets) =>
+  (bullets || [])
+    .filter(Boolean)
+    .map((b) => plainToRichHtml(toReadableParagraph(String(b))))
+    .filter(Boolean);
+
+const extractLanguagesFromText = (text, max = 3) => {
+  const raw = String(text || "").toLowerCase();
+  if (!raw) return [];
+  const known = [
+    "english", "hindi", "tamil", "nepali", "urdu", "arabic", "french", "german",
+    "spanish", "italian", "portuguese", "russian", "japanese", "korean", "chinese",
+  ];
+  const found = [];
+  for (const lang of known) {
+    if (new RegExp(`\\b${lang}\\b`, "i").test(raw)) found.push(lang);
+  }
+  const uniq = [...new Set(found)].slice(0, max);
+  return uniq.map((l) => l.charAt(0).toUpperCase() + l.slice(1));
+};
+
+const isLikelyCertificationItem = (value) => {
+  const s = String(value || "").trim();
+  if (!s || s.length < 4 || s.length > 160) return false;
+  if (/\b(passionate|curious|committed|eager|seeking|motivated individual)\b/i.test(s)) return false;
+  return /\b(certified|certification|certificate|credential|license|licensed|accredited|PMP|ITIL|CISSP|CCNA|CCNP|OCA|OCP|AWS|AZ-?\d{2,4}|GCP|TOEFL|IELTS|SCRUM|CSM|PSM|CKA|CKAD|CompTIA)\b/i.test(s)
+    || /\b[A-Z]{2,6}-\d{2,4}\b/.test(s);
+};
+
+/** Remove city/address fragments accidentally merged onto cert lines (e.g. "AWS ... Engineering Sundarharaicha - 4, Morang") */
+const stripMergedAddressFromCert = (s) => {
+  const t = String(s || '').trim();
+  const idx = t.search(/\s+(?:Sundarharaicha|Dharan|Biratnagar|Itahari|Kathmandu|Lalitpur|Pokhara|Morang|Province|Ward)\b/i);
+  if (idx > 12) return t.slice(0, idx).trim();
+  return t.replace(/\s+\d+\s*[-–]\s*\d+\s*,\s*Morang.*$/i, '').trim();
+};
+
+const normalizeCertificationItems = (items, max = 4) => {
+  const out = [];
+  const seen = new Set();
+  (items || []).forEach((x) => {
+    let t = String(typeof x === 'string' ? x : (x?.title || x?.name || ''))
+      .replace(/^[-•*▪]\s*/, '')
+      .trim();
+    t = stripMergedAddressFromCert(t);
+    if (!isLikelyCertificationItem(t)) return;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(t);
+  });
+  return out.slice(0, max);
 };
 
 const T3_SECTION_ALIASES = {
@@ -402,53 +524,269 @@ const ENHANCED_RESUME_SECTION_REGEX =
 
 function EnhancedResumeOrganizedPreview({ text }) {
   const lines = useMemo(() => (text || '').split('\n'), [text]);
+  const parsed = useMemo(() => parseEnhancedResumeToStructuredData(text || ''), [text]);
+  const certificationItems = useMemo(
+    () => normalizeCertificationItems(parsed?.certifications || [], 4),
+    [parsed]
+  );
+  const hasParsedContent = Boolean(
+    parsed &&
+      (
+        parsed.name ||
+        parsed.profession ||
+        parsed.summary ||
+        (parsed.skills && parsed.skills.length > 0) ||
+        certificationItems.length > 0 ||
+        (parsed.experiences && parsed.experiences.length > 0) ||
+        parsed.education?.degree ||
+        parsed.education?.school ||
+        parsed.education?.date ||
+        parsed.contact?.email ||
+        parsed.contact?.phone ||
+        parsed.contact?.linkedin ||
+        parsed.contact?.address
+      )
+  );
   return (
     <div className="rounded-lg border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-3 max-h-[42vh] overflow-y-auto shadow-inner">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Organized preview</p>
-      <div className="space-y-0">
-        {lines.map((line, i) => {
-          const t = line.trimEnd();
-          const trimmed = t.trim();
-          if (!trimmed) return <div key={i} className="h-2 shrink-0" aria-hidden />;
-          if (ENHANCED_RESUME_SECTION_REGEX.test(trimmed)) {
-            const label = trimmed.replace(/:\s*$/, '').trim();
-            return (
-              <h3
-                key={i}
-                className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mt-3 first:mt-0 mb-1.5 pb-1 border-b border-indigo-200/80"
-              >
-                {label}
-              </h3>
-            );
-          }
-          if (/^[-•*▪]\s/.test(trimmed) || /^\d+[\.)]\s/.test(trimmed)) {
-            const body = trimmed.replace(/^[-•*▪]\s*/, '').replace(/^\d+[\.)]\s*/, '');
-            return (
-              <p key={i} className="text-xs text-slate-700 leading-relaxed pl-3 ml-1 my-1 border-l-2 border-indigo-200">
-                <span className="text-indigo-500 mr-1">•</span>
-                {body}
+      {hasParsedContent ? (
+        <div className="space-y-2">
+          {(parsed.name || parsed.profession) && (
+            <div className="pb-1 border-b border-indigo-200/80">
+              {parsed.name && <p className="text-xs font-bold text-slate-900">{parsed.name}</p>}
+              {parsed.profession && <p className="text-xs text-slate-700">{parsed.profession}</p>}
+            </div>
+          )}
+          {parsed.summary && (
+            <div>
+              <h3 className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mb-1">Summary</h3>
+              <p className="text-xs text-slate-700 leading-relaxed break-words">{parsed.summary}</p>
+            </div>
+          )}
+          {parsed.skills?.length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mb-1">Skills</h3>
+              <p className="text-xs text-slate-700 leading-relaxed break-words">
+                {parsed.skills.slice(0, 12).join(", ")}
               </p>
-            );
-          }
-          if (
-            trimmed.length >= 8 &&
-            trimmed.length <= 72 &&
-            trimmed === trimmed.toUpperCase() &&
-            /^[A-Z0-9\s\-&,\/']+$/.test(trimmed) &&
-            trimmed.split(/\s+/).length <= 10
-          ) {
+            </div>
+          )}
+          {certificationItems.length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mb-1">Certifications</h3>
+              <div className="space-y-1">
+                {certificationItems.map((item, i) => (
+                  <p key={`cert-${i}`} className="text-xs text-slate-700 leading-relaxed pl-3 ml-1 border-l-2 border-indigo-200">
+                    <span className="text-indigo-500 mr-1">•</span>{item}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+          {parsed.experiences?.length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mb-1">Experience</h3>
+              <div className="space-y-1">
+                {parsed.experiences.slice(0, 2).map((ex, i) => (
+                  <div key={i}>
+                    <p className="text-xs font-semibold text-slate-800">
+                      {[ex.role, ex.company, ex.dateRange].filter(Boolean).join(" | ")}
+                    </p>
+                    {(ex.responsibilities || []).slice(0, 2).map((r, ri) => (
+                      <p key={`${i}-${ri}`} className="text-xs text-slate-700 leading-relaxed pl-3 ml-1 border-l-2 border-indigo-200">
+                        <span className="text-indigo-500 mr-1">•</span>{r}
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {(parsed.education?.degree || parsed.education?.school || parsed.education?.date) && (
+            <div>
+              <h3 className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mb-1">Education</h3>
+              <p className="text-xs text-slate-700 leading-relaxed break-words">
+                {[parsed.education.degree, parsed.education.school, parsed.education.date].filter(Boolean).join(" | ")}
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-0">
+          {lines.map((line, i) => {
+            const t = line.trimEnd();
+            const trimmed = t.trim();
+            if (!trimmed) return <div key={i} className="h-2 shrink-0" aria-hidden />;
+            if (ENHANCED_RESUME_SECTION_REGEX.test(trimmed)) {
+              const label = trimmed.replace(/:\s*$/, '').trim();
+              return (
+                <h3
+                  key={i}
+                  className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide mt-3 first:mt-0 mb-1.5 pb-1 border-b border-indigo-200/80"
+                >
+                  {label}
+                </h3>
+              );
+            }
+            if (/^[-•*▪]\s/.test(trimmed) || /^\d+[\.)]\s/.test(trimmed)) {
+              const body = trimmed.replace(/^[-•*▪]\s*/, '').replace(/^\d+[\.)]\s*/, '');
+              return (
+                <p key={i} className="text-xs text-slate-700 leading-relaxed pl-3 ml-1 my-1 border-l-2 border-indigo-200">
+                  <span className="text-indigo-500 mr-1">•</span>
+                  {body}
+                </p>
+              );
+            }
+            if (
+              trimmed.length >= 8 &&
+              trimmed.length <= 72 &&
+              trimmed === trimmed.toUpperCase() &&
+              /^[A-Z0-9\s\-&,\/']+$/.test(trimmed) &&
+              trimmed.split(/\s+/).length <= 10
+            ) {
+              return (
+                <p key={i} className="text-[11px] font-semibold text-slate-800 tracking-wide mt-2 mb-0.5">
+                  {trimmed}
+                </p>
+              );
+            }
             return (
-              <p key={i} className="text-[11px] font-semibold text-slate-800 tracking-wide mt-2 mb-0.5">
+              <p key={i} className="text-xs text-slate-700 leading-relaxed my-1 break-words">
                 {trimmed}
               </p>
             );
-          }
-          return (
-            <p key={i} className="text-xs text-slate-700 leading-relaxed my-1 break-words">
-              {trimmed}
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Shared interactive “Enhanced CV” reference panel */
+function EnhancedCvReferencePanelCard({
+  textareaId,
+  editableRefContent,
+  setEditableRefContent,
+  handleCopyToTemplate,
+  isApplyingToTemplate,
+  applyFeedback,
+  handleCopyRefContent,
+  copied,
+  enhancedResume,
+  compact,
+}) {
+  return (
+    <div
+      className={`flex flex-col flex-1 min-h-0 bg-white rounded-xl shadow-xl border border-slate-200/80 overflow-hidden ${
+        compact ? 'max-lg:rounded-2xl max-lg:min-h-0' : ''
+      }`}
+    >
+      <div className="shrink-0 p-3 border-b border-slate-100 bg-gradient-to-b from-emerald-50/80 to-white space-y-2">
+        <div className="flex items-start gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold">
+            ✓
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-800">Enhanced CV loaded</p>
+            <p className="text-xs text-slate-500 mt-0.5 leading-snug">
+              Edit the text below, then copy into your template (~2–3s).
             </p>
-          );
-        })}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopyToTemplate}
+          disabled={isApplyingToTemplate}
+          className="w-full flex items-center justify-center gap-2 px-3 py-3 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
+        >
+          {isApplyingToTemplate ? (
+            <>
+              <svg className="w-5 h-5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              Copying to template…
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Copy to template
+            </>
+          )}
+        </button>
+        {applyFeedback && (
+          <p className={`text-xs font-medium ${applyFeedback.startsWith('Content applied') ? 'text-green-700' : 'text-amber-700'}`}>
+            {applyFeedback}
+          </p>
+        )}
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+        <EnhancedResumeOrganizedPreview text={editableRefContent} />
+        <div className="mt-3">
+          <label htmlFor={textareaId} className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 block mb-1.5">
+            Full text (edit here)
+          </label>
+          <textarea
+            id={textareaId}
+            value={editableRefContent}
+            onChange={(e) => setEditableRefContent(e.target.value)}
+            rows={6}
+            className="w-full p-3 text-sm text-slate-800 border border-slate-200 rounded-lg bg-slate-50/80 resize-y min-h-[120px] focus:ring-2 focus:ring-indigo-400 focus:border-indigo-300 focus:bg-white leading-relaxed font-mono"
+            placeholder="Paste or edit your CV content here..."
+            spellCheck
+            style={{ wordBreak: 'break-word' }}
+          />
+        </div>
+      </div>
+
+      <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 space-y-2">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              const tidied = (editableRefContent || '')
+                .replace(/\r\n/g, '\n')
+                .split('\n')
+                .map((l) => l.trimEnd())
+                .join('\n')
+                .replace(/\n{4,}/g, '\n\n\n')
+                .trim();
+              setEditableRefContent(tidied);
+            }}
+            className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-white shrink-0"
+            title="Remove extra blank lines"
+          >
+            Tidy spacing
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyRefContent}
+            className="flex-1 min-w-[7rem] flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            {copied ? 'Copied!' : 'Copy text'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditableRefContent(enhancedResume)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-white bg-white"
+          >
+            Reset
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-500 leading-snug">
+          Use the green <strong>Copy to template</strong> button above to fill the CV fields from this text.
+        </p>
       </div>
     </div>
   );
@@ -483,7 +821,7 @@ const imageToCircularDataUrl = (dataUrl, size = 144) => {
 };
 
 const PREMIUM_TEMPLATE_IDS = [2, 5, 7, 11, 14, 16]; // Premium templates - pay to access
-const VISUAL_PDF_TEMPLATE_IDS = [1, 2, 3, 9, 10, 11, 12, 13, 14, 15, 16];
+const VISUAL_PDF_TEMPLATE_IDS = [1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 15, 16];
 
 const TEMPLATE_NAMES = {
   1: "Modern Professional", 2: "Classic Elegant", 3: "Creative Design",
@@ -541,7 +879,8 @@ const Fill_cv = () => {
 
   const enhancedResume = enhancedResumeFromState || enhancedResumeSession || null;
 
-  const cvRef = useRef(null); // ref to capture the cv section
+  const cvRef = useRef(null); // ref to capture the cv section (PDF/PNG = template only, not the reference sidebar)
+  const addressTemp4Ref = useRef(null); // Template 4: auto-resize address textarea in sidebar
   const image7DataUrlRef = useRef(null); // for blob→dataURL conversion when generating Template 7 PDF
   const addressTemp3Ref = useRef(null);
   const skillsTemp3Ref = useRef(null);
@@ -560,6 +899,14 @@ const Fill_cv = () => {
   useEffect(() => {
     if (enhancedResume) setEditableRefContent(enhancedResume);
   }, [enhancedResume]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const value = (editableRefContent || '').trim();
+    if (!value) return;
+    sessionStorage.setItem(FILL_CV_ENHANCED_SESSION, editableRefContent);
+    setEnhancedResumeSession(editableRefContent);
+  }, [editableRefContent]);
 
   const handleCopyRefContent = async () => {
     try {
@@ -755,10 +1102,52 @@ const Fill_cv = () => {
       }
       if (!t3.edu1Desc && data.education.school) setEdu1desctemp3(data.education.school);
     } else if (templateId === 4) {
+      const sourceTextT4 = typeof text === 'string' ? text : '';
+      setSummarytemp4('');
+      setCertstemp4(['', '']);
+      setSkillstemp4([
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+      ]);
+      setLanguagesTemp4([
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+      ]);
       if (data.profession) setProfessiontemp4(data.profession);
       if (data.summary) setSummarytemp4(plainToRichHtml(toReadableParagraph(data.summary)));
-      if (data.skills.length > 0) {
-        setSkillstemp4(data.skills.slice(0, 5).map((name, i) => ({ name, level: 90 - i * 5 })));
+      let skillsT4 = (data.skills || []).filter(Boolean);
+      if (skillsT4.length === 1 && (String(skillsT4[0]).match(/[,;]/g) || []).length >= 2) {
+        skillsT4 = String(skillsT4[0])
+          .split(/[,;]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      if (skillsT4.length > 0) {
+        setSkillstemp4(
+          skillsT4.slice(0, 5).map((name, i) => ({ name: protectHyphensForT4(name), level: 90 - i * 5 }))
+        );
+      }
+      const langsFromData = (data.languages || []).filter(Boolean);
+      if (langsFromData.length > 0) {
+        setLanguagesTemp4(langsFromData.slice(0, 3).map((name, i) => ({ name, level: 100 - i * 10 })));
+      } else {
+        const detectedLangs = extractLanguagesFromText(sourceTextT4, 3);
+        if (detectedLangs.length > 0) {
+          setLanguagesTemp4(detectedLangs.map((name, i) => ({ name, level: 100 - i * 10 })));
+        }
+      }
+      if (data.contact?.phone) setPhonetemp4(data.contact.phone);
+      if (data.contact?.email) setEmailtemp4(data.contact.email);
+      if (data.contact?.address) setAddresstemp4(data.contact.address);
+      else if (data.contact?.location) setAddresstemp4(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp4(data.contact.linkedin);
+      const certItems = normalizeCertificationItems(data.certifications || [], 4);
+      if (certItems.length > 0) {
+        setCertstemp4(certItems);
       }
       const summaryBullets = splitParagraphToBullets(data.summary, 4);
       setPosttemp4('');
@@ -772,32 +1161,38 @@ const Fill_cv = () => {
         const ex = normalizeTemplate4Experience(
           data.experiences[0],
           data.profession || "Professional Experience",
-          summaryBullets
+          summaryBullets,
+          data.summary || ''
         );
         if (ex.post) setPosttemp4(ex.post);
         if (ex.company) setCompanytemp4(ex.company);
-        if (ex.bullets.length > 0) {
-          setWorkdonetemp4(ex.bullets);
+        const w1 = template4BulletsToRichHtml(ex.bullets);
+        if (w1.length > 0) {
+          setWorkdonetemp4(w1);
           hasMeaningfulEmployment = true;
         }
+        if (ex.post?.trim() || ex.company?.trim()) hasMeaningfulEmployment = true;
       }
       if (data.experiences.length > 1) {
         const ex = normalizeTemplate4Experience(
           data.experiences[1],
           "Professional Experience",
-          splitParagraphToBullets(data.highlights?.join(". "), 3)
+          summaryBullets,
+          data.summary || ''
         );
         if (ex.post) setPost2temp4(ex.post);
         if (ex.company) setCompany2temp4(ex.company);
-        if (ex.bullets.length > 0) {
-          setWorkdone2temp4(ex.bullets);
+        const w2 = template4BulletsToRichHtml(ex.bullets);
+        if (w2.length > 0) {
+          setWorkdone2temp4(w2);
           hasMeaningfulEmployment = true;
         }
+        if (ex.post?.trim() || ex.company?.trim()) hasMeaningfulEmployment = true;
       }
       if (!hasMeaningfulEmployment) {
         setPosttemp4("Please add your data");
         setCompanytemp4("");
-        setWorkdonetemp4(["Please add your employment history details."]);
+        setWorkdonetemp4([plainToRichHtml("Please add your employment history details.")]);
         setPost2temp4("");
         setCompany2temp4("");
         setWorkdone2temp4([]);
@@ -1257,13 +1652,20 @@ const Fill_cv = () => {
       let template10Backups = [];
       let template11Backups = [];
       let template2Backups = [];
+      let template4Backups = [];
       let template12Backups = [];
       let template13Backups = [];
       let template14AncestorBackups = [];
       try {
-        // Find the actual template content (might be nested)
+        // Find the actual template content (might be nested) — CV only, not the enhanced reference sidebar
         let element = cvRef.current;
-        
+        // Template 4: always capture [data-template4] only — capturing the outer cvRef wrapper
+        // makes html2canvas use a huge canvas with the CV in a corner (tiny preview on the PDF).
+        if (templateId === 4) {
+          const t4Root = cvRef.current?.querySelector('[data-template4]');
+          if (t4Root) element = t4Root;
+        }
+
         // If the ref is on a wrapper, find the actual template div
         const template1El = templateId === 1 ? element.querySelector('[data-template1]') : null;
         const template2El = templateId === 2 ? element.querySelector('[data-template2]') : null;
@@ -1274,7 +1676,14 @@ const Fill_cv = () => {
         const template14El = templateId === 14 ? element.querySelector('[data-template14]') : null;
         const template15El = templateId === 15 ? element.querySelector('[data-template15]') : null;
         const template16El = templateId === 16 ? element.querySelector('[data-template16]') : null;
-        const templateDiv = template1El || template2El || template10El || template11El || template12El || template13El || template14El || template15El || template16El || element.querySelector('div[style*="height"], div[class*="max-w"]');
+        // querySelector does not match the element itself — if we already narrowed to [data-template4], use it
+        const template4El =
+          templateId === 4
+            ? element.hasAttribute?.('data-template4')
+              ? element
+              : element.querySelector('[data-template4]')
+            : null;
+        const templateDiv = template1El || template2El || template4El || template10El || template11El || template12El || template13El || template14El || template15El || template16El || element.querySelector('div[style*="height"], div[class*="max-w"]');
         if (templateDiv && templateDiv !== element) {
           // Check if templateDiv is a direct child or nested
           const isDirectChild = Array.from(element.children).includes(templateDiv);
@@ -1283,7 +1692,7 @@ const Fill_cv = () => {
           }
         }
         // Scroll into view so html2canvas captures correctly
-        if ((templateId === 1 || templateId === 2 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) && element) {
+        if ((templateId === 1 || templateId === 2 || templateId === 4 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) && element) {
           element.scrollIntoView({ behavior: 'instant', block: 'start' });
           await new Promise(resolve => setTimeout(resolve, 150));
           // Template 14: also scroll to end so education section at bottom is fully laid out
@@ -1314,7 +1723,7 @@ const Fill_cv = () => {
         element.style.overflow = 'visible';
         element.style.height = 'auto';
         element.style.maxHeight = 'none';
-        element.style.minHeight = (templateId === 1 || templateId === 2 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) ? '0' : element.style.minHeight; // avoid fixed min-height clipping / blank PDF pages
+        element.style.minHeight = (templateId === 1 || templateId === 2 || templateId === 4 || templateId === 10 || templateId === 11 || templateId === 12 || templateId === 13 || templateId === 14 || templateId === 15 || templateId === 16) ? '0' : element.style.minHeight; // avoid fixed min-height clipping / blank PDF pages
         element.style.border = 'none';
         element.style.boxShadow = 'none';
         element.style.position = 'relative';
@@ -1347,7 +1756,17 @@ const Fill_cv = () => {
           // Remove ALL height restrictions
           if (computedStyle.height && computedStyle.height !== 'auto') {
             if (childElement.tagName === 'DIV' || childElement.tagName === 'SECTION') {
-              childElement.style.height = 'auto';
+              // Template 4: do not strip heights inside header band — html2canvas can hide name/title behind shapes
+              if (templateId === 4 && childElement.closest?.('[data-template4-header-row]')) {
+                if (childElement.hasAttribute('data-template4-header-row')) {
+                  // Taller than h-24 so name + title are never clipped in html2canvas
+                  childElement.style.minHeight = '132px';
+                  childElement.style.height = 'auto';
+                  childElement.style.overflow = 'visible';
+                }
+              } else {
+                childElement.style.height = 'auto';
+              }
             }
           }
           
@@ -1390,6 +1809,15 @@ const Fill_cv = () => {
         // Wait for all images to load
         setDownloadProgress(25);
         await waitForImages(element);
+
+        // Wait for webfonts (Tailwind/system stack) so PDF text metrics match the editor
+        if (typeof document !== 'undefined' && document.fonts?.ready) {
+          try {
+            await document.fonts.ready;
+          } catch {
+            /* ignore */
+          }
+        }
         
         // Additional delay to ensure all content is rendered
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -1449,6 +1877,25 @@ const Fill_cv = () => {
             el.style.flex = 'none';
             return;
           }
+          // Template 4 (Corporate Standard): RichText in flex-1 main column — avoid ~0 width in PDF capture
+          if (templateId === 4 && el.closest('[data-template4]')) {
+            const mainCol = el.closest('.flex-1') || el.closest('[class*="flex-1"]');
+            let inner = 0;
+            if (mainCol) {
+              const cs = getComputedStyle(mainCol);
+              const pl = parseFloat(cs.paddingLeft) || 0;
+              const pr = parseFloat(cs.paddingRight) || 0;
+              inner = (mainCol.clientWidth || mainCol.offsetWidth) - pl - pr;
+            }
+            const pw = Math.max(200, inner - 4);
+            el.style.width = `${pw}px`;
+            el.style.minWidth = `${pw}px`;
+            el.style.maxWidth = `${pw}px`;
+            el.style.boxSizing = 'border-box';
+            el.style.display = 'block';
+            el.style.flex = 'none';
+            return;
+          }
           const parent = el.parentElement;
           let w = 380;
           if (parent) {
@@ -1482,6 +1929,92 @@ const Fill_cv = () => {
             void element.offsetHeight;
             await new Promise(resolve => setTimeout(resolve, 30));
           }
+        }
+
+        // Template 4: Corporate Standard — lock width + flex columns so PDF matches preview (max-w-4xl ≈ 896px)
+        if (templateId === 4) {
+          const t4 = element.querySelector('[data-template4]') || element;
+          const targetW = 896;
+          template4Backups.push({
+            el: t4,
+            props: ['width', 'minWidth', 'maxWidth', 'marginLeft', 'marginRight', 'minHeight', 'height', 'boxSizing'],
+            vals: [t4.style.width, t4.style.minWidth, t4.style.maxWidth, t4.style.marginLeft, t4.style.marginRight, t4.style.minHeight, t4.style.height, t4.style.boxSizing],
+          });
+          t4.style.width = `${targetW}px`;
+          t4.style.minWidth = `${targetW}px`;
+          t4.style.maxWidth = `${targetW}px`;
+          t4.style.marginLeft = 'auto';
+          t4.style.marginRight = 'auto';
+          t4.style.boxSizing = 'border-box';
+          t4.style.height = 'auto';
+          const bodyRow = t4.querySelector('[data-template4-body]') || t4.querySelector(':scope > div.grid') || t4.querySelector(':scope > div.flex');
+          if (bodyRow) {
+            template4Backups.push({
+              el: bodyRow,
+              props: ['display', 'flexDirection', 'alignItems', 'width', 'gridTemplateColumns', 'minHeight'],
+              vals: [
+                bodyRow.style.display,
+                bodyRow.style.flexDirection,
+                bodyRow.style.alignItems,
+                bodyRow.style.width,
+                bodyRow.style.gridTemplateColumns,
+                bodyRow.style.minHeight,
+              ],
+            });
+            const kids = [...bodyRow.children];
+            const leftCol = kids[0];
+            const rightCol = kids[1];
+            const totalW = targetW;
+            const leftW = Math.round(totalW / 3);
+            const rightW = Math.max(400, totalW - leftW);
+            const applyCol = (col, w, isLeft) => {
+              if (!col) return;
+              template4Backups.push({
+                el: col,
+                props: ['width', 'minWidth', 'maxWidth', 'flex', 'flexShrink', 'gridColumn'],
+                vals: [col.style.width, col.style.minWidth, col.style.maxWidth, col.style.flex, col.style.flexShrink, col.style.gridColumn],
+              });
+              if (isLeft) {
+                col.style.flex = `0 0 ${w}px`;
+                col.style.width = `${w}px`;
+                col.style.minWidth = `${w}px`;
+                col.style.maxWidth = `${w}px`;
+                col.style.flexShrink = '0';
+              } else {
+                col.style.flex = '1 1 auto';
+                col.style.minWidth = '0';
+                col.style.width = `${w}px`;
+                col.style.maxWidth = 'none';
+              }
+            };
+            bodyRow.style.display = 'flex';
+            bodyRow.style.flexDirection = 'row';
+            bodyRow.style.alignItems = 'stretch';
+            bodyRow.style.width = '100%';
+            bodyRow.style.gridTemplateColumns = '';
+            bodyRow.style.minHeight = '';
+            applyCol(leftCol, leftW, true);
+            applyCol(rightCol, rightW, false);
+            void element.offsetHeight;
+            await new Promise(resolve => setTimeout(resolve, 40));
+          }
+          // At least one A4 page tall at 896px width so PDF fills the sheet (sidebar stretches with grid)
+          const a4MinPx = Math.ceil(targetW * (297 / 210));
+          const naturalH = t4.scrollHeight || t4.offsetHeight;
+          t4.style.minHeight = `${Math.max(naturalH + 24, a4MinPx)}px`;
+          const headerRowLive = t4.querySelector('[data-template4-header-row]');
+          if (headerRowLive) {
+            template4Backups.push({
+              el: headerRowLive,
+              props: ['height', 'minHeight', 'overflow'],
+              vals: [headerRowLive.style.height, headerRowLive.style.minHeight, headerRowLive.style.overflow],
+            });
+            headerRowLive.style.height = 'auto';
+            headerRowLive.style.minHeight = '132px';
+            headerRowLive.style.overflow = 'visible';
+          }
+          void element.offsetHeight;
+          await new Promise(resolve => setTimeout(resolve, 40));
         }
 
         // Template 2: html2canvas needs explicit two-column widths (Classic Elegant / max-w-3xl)
@@ -1778,18 +2311,35 @@ const Fill_cv = () => {
           const rw2 = Math.round(element.getBoundingClientRect().width);
           if (rw2 > 0) contentWidth = rw2;
         }
+        if (templateId === 4) {
+          const rw4 = Math.round(
+            Math.max(element.offsetWidth || 0, element.getBoundingClientRect().width || 0)
+          );
+          contentWidth = rw4 > 0 ? rw4 : 896;
+          contentHeight = Math.max(
+            element.scrollHeight,
+            element.offsetHeight,
+            element.clientHeight
+          ) + 32;
+        }
 
         // High-quality canvas capture - match edit menu appearance
+        // Template 4: do NOT pass width/height/windowWidth/windowHeight — if they exceed the
+        // painted element bounds, html2canvas creates an oversized canvas and the CV sits in a corner.
         const canvas = await html2canvas(element, {
           scale: 3, // Balance quality vs memory (4 can cause issues on long templates)
           useCORS: true,
           allowTaint: false,
           backgroundColor: templateId === 1 ? '#000000' : '#ffffff',
           logging: false,
-          width: contentWidth,
-          height: contentHeight,
-          windowWidth: contentWidth,
-          windowHeight: contentHeight,
+          ...(templateId === 4
+            ? {}
+            : {
+                width: contentWidth,
+                height: contentHeight,
+                windowWidth: contentWidth,
+                windowHeight: contentHeight,
+              }),
           scrollX: 0,
           scrollY: 0,
           removeContainer: false,
@@ -1803,6 +2353,58 @@ const Fill_cv = () => {
               [data-template14-section] { font-size: 1.1rem !important; font-weight: 400 !important; color: #000 !important; }
               [data-template14-contact] { background: #000 !important; color: #fff !important; }
               [data-template14-education] input, [data-template14-education] div { font-weight: bold !important; }
+              ${
+                templateId === 4
+                  ? `
+              [data-template4], [data-template4] * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+              }
+              [data-template4] { -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
+              [data-template4] [contenteditable="true"] {
+                word-break: normal !important;
+                overflow-wrap: anywhere !important;
+                max-width: 100% !important;
+                box-sizing: border-box !important;
+              }
+              [data-template4] .flex.gap-2.items-start { align-items: flex-start !important; }
+              [data-template4-header-row] {
+                position: relative !important;
+                overflow: visible !important;
+                isolation: isolate !important;
+                min-height: 132px !important;
+                height: auto !important;
+              }
+              [data-template4-header-bg="left"] {
+                background-color: #e5e7eb !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              [data-template4-header-bg="right"] {
+                background-color: #2563eb !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              [data-template4-header-content] {
+                position: relative !important;
+                z-index: 50 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              [data-template4-header-row] > div.absolute { z-index: 0 !important; pointer-events: none !important; }
+              [data-template4-header-print] { position: relative !important; z-index: 60 !important; color: inherit !important; }
+              [data-template4] input[data-template4-contact],
+              [data-template4] textarea[data-template4-contact],
+              [data-template4] input[data-template4-skill-name],
+              [data-template4] input[data-template4-lang-name] {
+                overflow-wrap: anywhere !important;
+                word-break: normal !important;
+                max-width: 100% !important;
+              }
+            `
+                  : ''
+              }
             `;
             clonedDoc.head.appendChild(styleEl);
 
@@ -1834,6 +2436,51 @@ const Fill_cv = () => {
                 empty.style.cssText = 'display:none;height:0;overflow:hidden;';
                 input.parentNode.replaceChild(empty, input);
                 return;
+              }
+              // Template 4: show skill/language level numbers (otherwise generic handler hides number inputs)
+              if (templateId === 4 && input.type === 'number' && input.closest('[data-template4]')) {
+                const span = clonedDoc.createElement('span');
+                span.textContent = input.value ?? '0';
+                span.style.cssText =
+                  'font-size:12px;color:rgba(255,255,255,0.95);width:2.25rem;min-width:2.25rem;flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums;display:inline-block;';
+                input.parentNode.replaceChild(span, input);
+                return;
+              }
+              // Template 4: flex-1 min-w-0 collapses to ~0px in html2canvas — skill/lang names vanish; hyphens break words badly
+              if (templateId === 4 && input.type === 'text' && input.closest('[data-template4]')) {
+                const hyphenSafe = (v) =>
+                  String(v || '').replace(/([a-zA-Z0-9])-([a-zA-Z0-9])/g, '$1\u2011$2');
+                if (input.hasAttribute('data-template4-skill-name') || input.hasAttribute('data-template4-lang-name')) {
+                  const div = clonedDoc.createElement('div');
+                  div.textContent = hyphenSafe(input.value);
+                  div.className = input.className;
+                  div.style.cssText =
+                    'display:block;flex:1 1 auto;min-width:0;max-width:100%;font-size:0.875rem;line-height:1.4;color:rgba(255,255,255,0.95);word-break:normal;overflow-wrap:anywhere;white-space:normal;background:transparent;border:none;outline:none;';
+                  input.parentNode.replaceChild(div, input);
+                  return;
+                }
+                if (input.hasAttribute('data-template4-contact')) {
+                  const div = clonedDoc.createElement('div');
+                  div.textContent = hyphenSafe(input.value);
+                  div.className = input.className;
+                  div.style.cssText =
+                    'display:block;width:100%;min-width:0;margin-bottom:0.5rem;font-size:0.875rem;line-height:1.4;color:rgba(255,255,255,0.95);word-break:normal;overflow-wrap:anywhere;white-space:normal;background:transparent;border:none;outline:none;';
+                  input.parentNode.replaceChild(div, input);
+                  return;
+                }
+                if (input.hasAttribute('data-template4-header')) {
+                  const div = clonedDoc.createElement('div');
+                  div.textContent = hyphenSafe(input.value);
+                  div.className = input.className;
+                  const role = String(input.getAttribute('data-template4-header') || '').toLowerCase();
+                  const isName = role === 'name' || (role !== 'title' && input.placeholder === 'NAME');
+                  div.setAttribute('data-template4-header-print', isName ? 'name' : 'title');
+                  div.style.cssText = isName
+                    ? 'display:block;width:100%;text-align:center;font-size:1.5rem;font-weight:700;line-height:1.3;color:#111827;text-transform:uppercase;background:transparent;border:none;outline:none;word-break:normal;overflow-wrap:anywhere;white-space:normal;position:relative;z-index:60;visibility:visible;opacity:1;min-height:1.4em;padding-bottom:2px;'
+                    : 'display:block;width:100%;text-align:center;font-size:1rem;line-height:1.35;color:#374151;margin-top:0.35rem;background:transparent;border:none;outline:none;word-break:normal;overflow-wrap:anywhere;white-space:normal;position:relative;z-index:60;visibility:visible;opacity:1;min-height:1.25em;';
+                  input.parentNode.replaceChild(div, input);
+                  return;
+                }
               }
               // Number inputs: Template 10 skill levels show value; others hide (progress bar shows it)
               if (input.type === 'number') {
@@ -2126,6 +2773,17 @@ const Fill_cv = () => {
               if (templateId === 1 && tv) {
                 tv = tv.replace(/([a-zA-Z0-9])-([a-zA-Z0-9])/g, '$1\u2011$2');
               }
+              // Template 4 sidebar address: multi-line white text (match contact row styling)
+              if (templateId === 4 && textarea.closest('[data-template4]') && textarea.hasAttribute('data-template4-contact')) {
+                const div = clonedDoc.createElement('div');
+                div.textContent = tv || '';
+                div.className = textarea.className;
+                div.setAttribute('data-template4-contact-print', '');
+                div.style.cssText =
+                  'display:block;width:100%;min-width:0;margin-bottom:0.5rem;font-size:0.875rem;line-height:1.45;color:rgba(255,255,255,0.95);word-break:normal;overflow-wrap:anywhere;white-space:pre-wrap;background:transparent;border:none;outline:none;';
+                textarea.parentNode.replaceChild(div, textarea);
+                return;
+              }
               replaceWithDiv(textarea, tv);
             });
 
@@ -2205,6 +2863,22 @@ const Fill_cv = () => {
                   }
                 }
                 const pw = Math.max(280, inner - 4);
+                el.style.width = `${pw}px`;
+                el.style.minWidth = `${pw}px`;
+                el.style.maxWidth = `${pw}px`;
+                el.style.boxSizing = 'border-box';
+                el.style.display = 'block';
+                el.style.flex = 'none';
+              } else if (templateId === 4 && el.closest('[data-template4]')) {
+                const mainCol = el.closest('.flex-1') || el.closest('[class*="flex-1"]');
+                let inner = 0;
+                if (mainCol) {
+                  const cs = clonedElement.ownerDocument.defaultView.getComputedStyle(mainCol);
+                  const pl = parseFloat(cs.paddingLeft) || 0;
+                  const pr = parseFloat(cs.paddingRight) || 0;
+                  inner = (mainCol.clientWidth || mainCol.offsetWidth) - pl - pr;
+                }
+                const pw = Math.max(200, inner - 4);
                 el.style.width = `${pw}px`;
                 el.style.minWidth = `${pw}px`;
                 el.style.maxWidth = `${pw}px`;
@@ -2380,6 +3054,94 @@ const Fill_cv = () => {
                     entry.style.minWidth = '0';
                   });
                 }
+              }
+            }
+
+            // Template 4: Corporate Standard — clone must match locked layout (same as pre-capture) or PDF looks wrong
+            if (templateId === 4) {
+              const t4 = clonedElement.hasAttribute('data-template4') ? clonedElement : clonedElement.querySelector('[data-template4]');
+              if (t4) {
+                const w = 896;
+                const a4MinPx = Math.ceil(w * (297 / 210));
+                t4.style.width = `${w}px`;
+                t4.style.minWidth = `${w}px`;
+                t4.style.maxWidth = `${w}px`;
+                t4.style.boxSizing = 'border-box';
+                t4.style.overflow = 'visible';
+                t4.style.marginLeft = 'auto';
+                t4.style.marginRight = 'auto';
+                t4.style.height = 'auto';
+                t4.style.display = 'flex';
+                t4.style.flexDirection = 'column';
+                const bodyRow = t4.querySelector('[data-template4-body]') || t4.querySelector(':scope > div.grid') || t4.querySelector(':scope > div.flex');
+                if (bodyRow) {
+                  const leftW = Math.round(w / 3);
+                  const rightW = Math.max(400, w - leftW);
+                  bodyRow.style.display = 'flex';
+                  bodyRow.style.flexDirection = 'row';
+                  bodyRow.style.gridTemplateColumns = '';
+                  bodyRow.style.width = '100%';
+                  bodyRow.style.flex = '1 1 auto';
+                  bodyRow.style.minHeight = '0';
+                  bodyRow.style.alignItems = 'stretch';
+                  const kids = [...bodyRow.children];
+                  const leftCol = kids[0];
+                  const rightCol = kids[1];
+                  [leftCol, rightCol].forEach((col, i) => {
+                    if (!col) return;
+                    const cw = i === 0 ? leftW : rightW;
+                    col.style.minHeight = '100%';
+                    col.style.height = '100%';
+                    col.style.alignSelf = 'stretch';
+                    col.style.boxSizing = 'border-box';
+                    col.style.overflow = 'visible';
+                    if (i === 0) {
+                      col.style.flex = `0 0 ${cw}px`;
+                      col.style.width = `${cw}px`;
+                      col.style.minWidth = `${cw}px`;
+                      col.style.maxWidth = `${cw}px`;
+                      col.style.backgroundColor = '#333333';
+                    } else {
+                      col.style.flex = '1 1 auto';
+                      col.style.minWidth = '0';
+                      col.style.width = `${cw}px`;
+                      col.style.maxWidth = 'none';
+                    }
+                  });
+                }
+                const headerRow = t4.querySelector('[data-template4-header-row]') || t4.querySelector(':scope > div.relative');
+                if (headerRow) {
+                  headerRow.style.width = '100%';
+                  headerRow.style.overflow = 'visible';
+                  headerRow.style.flexShrink = '0';
+                  headerRow.style.minHeight = '132px';
+                  headerRow.style.height = 'auto';
+                  headerRow.style.position = 'relative';
+                  headerRow.style.display = 'flex';
+                  headerRow.style.alignItems = 'flex-end';
+                  // Keep clip-path so PDF colors/shapes match the editor (stripping it made full gray/blue blocks)
+                  headerRow.querySelectorAll('[data-template4-header-bg]').forEach((layer) => {
+                    layer.style.pointerEvents = 'none';
+                    layer.style.zIndex = '0';
+                    const side = layer.getAttribute('data-template4-header-bg');
+                    if (side === 'left') layer.style.backgroundColor = '#e5e7eb';
+                    if (side === 'right') layer.style.backgroundColor = '#2563eb';
+                  });
+                  const headerContent = headerRow.querySelector('[data-template4-header-content]');
+                  if (headerContent) {
+                    headerContent.style.position = 'relative';
+                    headerContent.style.zIndex = '50';
+                    headerContent.style.isolation = 'isolate';
+                  }
+                  headerRow.querySelectorAll('[data-template4-header-print]').forEach((el) => {
+                    el.style.position = 'relative';
+                    el.style.zIndex = '60';
+                    el.style.visibility = 'visible';
+                    el.style.opacity = '1';
+                  });
+                }
+                // Must NOT use minHeight: 0 on t4 — it collapses the layout so the sidebar stops mid-page in the PDF
+                t4.style.minHeight = `${Math.max((t4.scrollHeight || 0) + 24, a4MinPx)}px`;
               }
             }
 
@@ -2750,31 +3512,38 @@ const Fill_cv = () => {
           const imgWidth = 210; // A4 width in mm
           const pageHeight = 297; // A4 height in mm
           
-          // Calculate image dimensions maintaining aspect ratio
+          // Natural height (mm) if the raster is placed at full page width
           const totalHeight = (canvas.height * imgWidth) / canvas.width;
-          const pageCount = Math.ceil(totalHeight / pageHeight) || 1;
-          // Avoid nearly-blank last page: scale down to fit on 1 page if last page would have < 50mm
-          // Skip for template 1: that branch centers a narrower image → white bars left/right (not full-bleed)
-          const remainder = totalHeight % pageHeight;
-          const useShrinkLastPage =
-            templateId !== 1 && pageCount > 1 && remainder > 0 && remainder < 50;
-          if (useShrinkLastPage) {
-            const scale = ((pageCount - 1) * pageHeight) / totalHeight;
-            const scaledWidth = imgWidth * scale;
-            const scaledHeight = (pageCount - 1) * pageHeight;
-            pdf.addImage(imgData, 'PNG', (imgWidth - scaledWidth) / 2, 0, scaledWidth, scaledHeight, undefined, 'FAST');
+
+          // Visual / layout PDFs: one A4 page, edge-to-edge — stretch raster to full 210×297mm so there is
+          // no letterboxing (uniform "fit" scaling left white bars when content was taller than one page).
+          if (VISUAL_PDF_TEMPLATE_IDS.includes(templateId)) {
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, pageHeight, undefined, 'SLOW');
           } else {
-            for (let page = 0; page < pageCount; page++) {
-              if (page > 0) pdf.addPage();
-              const yOffset = -page * pageHeight;
-              pdf.addImage(imgData, 'PNG', 0, yOffset, imgWidth, totalHeight, undefined, 'FAST');
-              // Template 1: fill unused area below the raster on each page (avoids white strip on A4)
-              if (templateId === 1) {
-                const imgBottom = yOffset + totalHeight;
-                const contentBottomOnPage = Math.min(pageHeight, Math.max(0, imgBottom));
-                if (contentBottomOnPage < pageHeight) {
-                  pdf.setFillColor(0, 0, 0);
-                  pdf.rect(0, contentBottomOnPage, imgWidth, pageHeight - contentBottomOnPage, 'F');
+            let pageCount = Math.ceil(totalHeight / pageHeight) || 1;
+            const remainder = totalHeight % pageHeight;
+            const useShrinkLastPage =
+              templateId !== 1 &&
+              pageCount > 1 &&
+              remainder > 0 &&
+              remainder < 50;
+            if (useShrinkLastPage) {
+              const scale = ((pageCount - 1) * pageHeight) / totalHeight;
+              const scaledWidth = imgWidth * scale;
+              const scaledHeight = (pageCount - 1) * pageHeight;
+              pdf.addImage(imgData, 'PNG', (imgWidth - scaledWidth) / 2, 0, scaledWidth, scaledHeight, undefined, 'SLOW');
+            } else {
+              for (let page = 0; page < pageCount; page++) {
+                if (page > 0) pdf.addPage();
+                const yOffset = -page * pageHeight;
+                pdf.addImage(imgData, 'PNG', 0, yOffset, imgWidth, totalHeight, undefined, 'SLOW');
+                if (templateId === 1) {
+                  const imgBottom = yOffset + totalHeight;
+                  const contentBottomOnPage = Math.min(pageHeight, Math.max(0, imgBottom));
+                  if (contentBottomOnPage < pageHeight) {
+                    pdf.setFillColor(0, 0, 0);
+                    pdf.rect(0, contentBottomOnPage, imgWidth, pageHeight - contentBottomOnPage, 'F');
+                  }
                 }
               }
             }
@@ -2828,6 +3597,9 @@ const Fill_cv = () => {
           if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
         });
         template2Backups.forEach(({ el, props, vals }) => {
+          if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
+        });
+        template4Backups.forEach(({ el, props, vals }) => {
           if (el?.isConnected) props.forEach((p, i) => { el.style[p] = vals[i] || ''; });
         });
         template12Backups.forEach(({ el, props, vals }) => {
@@ -3092,107 +3864,119 @@ const Fill_cv = () => {
 
   //state for the template 4
   //state for the template 4 (Oracle DBA / Corporate Standard layout)
-  const [nametemp4, setNametemp4] = useState("RAVINDRA RACHIN");
-  const [profession4, setProfessiontemp4] = useState("Oracle applications DBA");
-  const [addresstemp4, setAddresstemp4] = useState("Chennai, India");
-  const [phonetemp4, setPhonetemp4] = useState("+91-9876543210");
-  const [emailtemp4, setEmailtemp4] = useState("ravindra@gmail.com");
-  const [linkedintemp4, setLinkedintemp4] = useState("linkedin.com/in/ravindra");
+  const [nametemp4, setNametemp4] = useState("");
+  const [profession4, setProfessiontemp4] = useState("");
+  const [addresstemp4, setAddresstemp4] = useState("");
+  const [phonetemp4, setPhonetemp4] = useState("");
+  const [emailtemp4, setEmailtemp4] = useState("");
+  const [linkedintemp4, setLinkedintemp4] = useState("");
   const [skillstemp4, setSkillstemp4] = useState([
-    { name: "Oracle Database Administration", level: 95 },
-    { name: "Backup and Recovery", level: 90 },
-    { name: "Performance Tuning", level: 88 },
-    { name: "Oracle E-Business Suite", level: 85 },
-    { name: "SQL & PL/SQL", level: 92 },
+    { name: "", level: 0 },
+    { name: "", level: 0 },
+    { name: "", level: 0 },
+    { name: "", level: 0 },
+    { name: "", level: 0 },
   ]);
   const handleskillstemp4Change = (index, field, value) => {
     const arr = [...skillstemp4];
-    arr[index] = { ...arr[index], [field]: field === 'level' ? parseInt(value) || 0 : value };
+    const v =
+      field === 'level'
+        ? parseInt(value, 10) || 0
+        : field === 'name'
+          ? protectHyphensForT4(value)
+          : value;
+    arr[index] = { ...arr[index], [field]: v };
     setSkillstemp4(arr);
   };
   const [languagesTemp4, setLanguagesTemp4] = useState([
-    { name: "Hindi", level: 100 },
-    { name: "English", level: 90 },
-    { name: "Tamil", level: 85 },
+    { name: "", level: 0 },
+    { name: "", level: 0 },
+    { name: "", level: 0 },
   ]);
   const handleLanguageTemp4Change = (index, field, value) => {
     const arr = [...languagesTemp4];
-    arr[index] = { ...arr[index], [field]: field === 'level' ? parseInt(value) || 0 : value };
+    const v =
+      field === 'level'
+        ? parseInt(value, 10) || 0
+        : field === 'name'
+          ? protectHyphensForT4(value)
+          : value;
+    arr[index] = { ...(arr[index] || { name: "", level: 0 }), [field]: v };
     setLanguagesTemp4(arr);
   };
-  const [summarytemp4, setSummarytemp4] = useState("Dedicated Oracle Applications Database Administrator with extensive experience in managing, optimizing, and securing Oracle databases. Proven track record in performance tuning, backup strategies, and ensuring high availability of critical systems.");
-  const [posttemp4, setPosttemp4] = useState("Oracle Database Administrator | Apr 2021 - Present");
-  const [companytemp4, setCompanytemp4] = useState("UNO Corporations, Chennai");
+  const [summarytemp4, setSummarytemp4] = useState("");
+  const [posttemp4, setPosttemp4] = useState("");
+  const [companytemp4, setCompanytemp4] = useState("");
   const [workdonetemp4, setWorkdonetemp4] = useState([
-    "Managed and maintained Oracle 19c databases for enterprise applications.",
-    "Implemented backup and recovery strategies ensuring 99.9% uptime.",
-    "Performed performance tuning and optimization of complex queries.",
+    "",
+    "",
+    "",
   ]);
   const handleworkdoneChange = (index, value) => {
     const arr = [...workdonetemp4];
     arr[index] = value;
     setWorkdonetemp4(arr);
   };
-  const [post2temp4, setPost2temp4] = useState("Junior Oracle Applications DBA | Jun 2019 - Mar 2021");
-  const [company2temp4, setCompany2temp4] = useState("Jarvis Industries, Chennai");
+  const [post2temp4, setPost2temp4] = useState("");
+  const [company2temp4, setCompany2temp4] = useState("");
   const [workdone2temp4, setWorkdone2temp4] = useState([
-    "Assisted in database administration and monitoring tasks.",
-    "Participated in migration projects from Oracle 11g to 19c.",
-    "Maintained documentation and change management records.",
+    "",
+    "",
+    "",
   ]);
   const handleworkdone2Change = (index, value) => {
     const arr = [...workdone2temp4];
     arr[index] = value;
     setWorkdone2temp4(arr);
   };
-  const [facultytemp4, setFacultytemp4] = useState("B.Tech in Computer Science | 2019");
-  const [collegetemp4, setCollegetemp4] = useState("Indian Institute Of Technology Madras");
+  const [facultytemp4, setFacultytemp4] = useState("");
+  const [collegetemp4, setCollegetemp4] = useState("");
   const [certstemp4, setCertstemp4] = useState([
-    "Oracle Database Administrator Certified Associate (OCA)",
-    "Oracle E-Business Suite R12 Certification",
+    "",
+    "",
   ]);
   const handleCertTemp4Change = (i, v) => { const arr = [...certstemp4]; arr[i] = v; setCertstemp4(arr); };
 
   const resetTemplate4 = () => {
     if (!window.confirm('Reset template to default? All your edits will be cleared.')) return;
-    setNametemp4("RAVINDRA RACHIN");
-    setProfessiontemp4("Oracle applications DBA");
-    setAddresstemp4("Chennai, India");
-    setPhonetemp4("+91-9876543210");
-    setEmailtemp4("ravindra@gmail.com");
-    setLinkedintemp4("linkedin.com/in/ravindra");
+    setNametemp4("");
+    setProfessiontemp4("");
+    setAddresstemp4("");
+    setPhonetemp4("");
+    setEmailtemp4("");
+    setLinkedintemp4("");
     setSkillstemp4([
-      { name: "big data", level: 90 },
-      { name: "C++", level: 85 },
-      { name: "charts", level: 80 },
-      { name: "Circuit design", level: 75 },
-      { name: "hardware", level: 70 },
+      { name: "", level: 0 },
+      { name: "", level: 0 },
+      { name: "", level: 0 },
+      { name: "", level: 0 },
+      { name: "", level: 0 },
     ]);
     setLanguagesTemp4([
-      { name: "Hindi", level: 100 },
-      { name: "English", level: 90 },
-      { name: "Tamil", level: 85 },
+      { name: "", level: 0 },
+      { name: "", level: 0 },
+      { name: "", level: 0 },
     ]);
-    setSummarytemp4("Dedicated Oracle Applications Database Administrator with extensive experience in managing, optimizing, and securing Oracle databases. Proven track record in performance tuning, backup strategies, and ensuring high availability of critical systems.");
-    setPosttemp4("Oracle Database Administrator | Apr 2021 - Present");
-    setCompanytemp4("UNO Corporations, Chennai");
+    setSummarytemp4("");
+    setPosttemp4("");
+    setCompanytemp4("");
     setWorkdonetemp4([
-      "Managed and maintained Oracle 19c databases for enterprise applications.",
-      "Implemented backup and recovery strategies ensuring 99.9% uptime.",
-      "Performed performance tuning and optimization of complex queries.",
+      "",
+      "",
+      "",
     ]);
-    setPost2temp4("Junior Oracle Applications DBA | Jun 2019 - Mar 2021");
-    setCompany2temp4("Jarvis Industries, Chennai");
+    setPost2temp4("");
+    setCompany2temp4("");
     setWorkdone2temp4([
-      "Assisted in database administration and monitoring tasks.",
-      "Participated in migration projects from Oracle 11g to 19c.",
-      "Maintained documentation and change management records.",
+      "",
+      "",
+      "",
     ]);
-    setFacultytemp4("B.Tech in Computer Science | 2019");
-    setCollegetemp4("Indian Institute Of Technology Madras");
+    setFacultytemp4("");
+    setCollegetemp4("");
     setCertstemp4([
-      "Oracle Database Administrator Certified Associate (OCA)",
-      "Oracle E-Business Suite R12 Certification",
+      "",
+      "",
     ]);
   };
 
@@ -3575,6 +4359,15 @@ const Fill_cv = () => {
     el.style.height = Math.max(el.scrollHeight, minH) + 'px';
   };
 
+  // Template 4: address field is a textarea — reflow height when content changes (paste / apply from enhanced CV)
+  useEffect(() => {
+    if (templateId !== 4) return;
+    const el = addressTemp4Ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, 44) + 'px';
+  }, [templateId, addresstemp4]);
+
   // Template 3 top-row textareas (Address/Skills) can grow a lot on long text.
   // When content is replaced programmatically (Copy to template), shrink back to fit.
   useEffect(() => {
@@ -3805,10 +4598,52 @@ const Fill_cv = () => {
       }
       if (!t3.edu1Desc && data.education.school) setEdu1desctemp3(data.education.school);
     } else if (templateId === 4) {
+      const sourceTextT4 = enhancedResume || editableRefContent || '';
+      setSummarytemp4('');
+      setCertstemp4(['', '']);
+      setSkillstemp4([
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+      ]);
+      setLanguagesTemp4([
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+        { name: "", level: 0 },
+      ]);
       if (data.profession) setProfessiontemp4(data.profession);
       if (data.summary) setSummarytemp4(plainToRichHtml(toReadableParagraph(data.summary)));
-      if (data.skills.length > 0) {
-        setSkillstemp4(data.skills.slice(0, 5).map((name, i) => ({ name, level: 90 - i * 5 })));
+      let skillsT4b = (data.skills || []).filter(Boolean);
+      if (skillsT4b.length === 1 && (String(skillsT4b[0]).match(/[,;]/g) || []).length >= 2) {
+        skillsT4b = String(skillsT4b[0])
+          .split(/[,;]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      if (skillsT4b.length > 0) {
+        setSkillstemp4(
+          skillsT4b.slice(0, 5).map((name, i) => ({ name: protectHyphensForT4(name), level: 90 - i * 5 }))
+        );
+      }
+      const langsFromDataB = (data.languages || []).filter(Boolean);
+      if (langsFromDataB.length > 0) {
+        setLanguagesTemp4(langsFromDataB.slice(0, 3).map((name, i) => ({ name, level: 100 - i * 10 })));
+      } else {
+        const detectedLangs = extractLanguagesFromText(sourceTextT4, 3);
+        if (detectedLangs.length > 0) {
+          setLanguagesTemp4(detectedLangs.map((name, i) => ({ name, level: 100 - i * 10 })));
+        }
+      }
+      if (data.contact?.phone) setPhonetemp4(data.contact.phone);
+      if (data.contact?.email) setEmailtemp4(data.contact.email);
+      if (data.contact?.address) setAddresstemp4(data.contact.address);
+      else if (data.contact?.location) setAddresstemp4(data.contact.location);
+      if (data.contact?.linkedin) setLinkedintemp4(data.contact.linkedin);
+      const certItems = normalizeCertificationItems(data.certifications || [], 4);
+      if (certItems.length > 0) {
+        setCertstemp4(certItems);
       }
       const summaryBullets = splitParagraphToBullets(data.summary, 4);
       setPosttemp4('');
@@ -3822,32 +4657,38 @@ const Fill_cv = () => {
         const ex = normalizeTemplate4Experience(
           data.experiences[0],
           data.profession || "Professional Experience",
-          summaryBullets
+          summaryBullets,
+          data.summary || ''
         );
         if (ex.post) setPosttemp4(ex.post);
         if (ex.company) setCompanytemp4(ex.company);
-        if (ex.bullets.length > 0) {
-          setWorkdonetemp4(ex.bullets);
+        const w1 = template4BulletsToRichHtml(ex.bullets);
+        if (w1.length > 0) {
+          setWorkdonetemp4(w1);
           hasMeaningfulEmployment = true;
         }
+        if (ex.post?.trim() || ex.company?.trim()) hasMeaningfulEmployment = true;
       }
       if (data.experiences.length > 1) {
         const ex = normalizeTemplate4Experience(
           data.experiences[1],
           "Professional Experience",
-          splitParagraphToBullets(data.highlights?.join(". "), 3)
+          summaryBullets,
+          data.summary || ''
         );
         if (ex.post) setPost2temp4(ex.post);
         if (ex.company) setCompany2temp4(ex.company);
-        if (ex.bullets.length > 0) {
-          setWorkdone2temp4(ex.bullets);
+        const w2 = template4BulletsToRichHtml(ex.bullets);
+        if (w2.length > 0) {
+          setWorkdone2temp4(w2);
           hasMeaningfulEmployment = true;
         }
+        if (ex.post?.trim() || ex.company?.trim()) hasMeaningfulEmployment = true;
       }
       if (!hasMeaningfulEmployment) {
         setPosttemp4("Please add your data");
         setCompanytemp4("");
-        setWorkdonetemp4(["Please add your employment history details."]);
+        setWorkdonetemp4([plainToRichHtml("Please add your employment history details.")]);
         setPost2temp4("");
         setCompany2temp4("");
         setWorkdone2temp4([]);
@@ -5635,34 +6476,69 @@ const Fill_cv = () => {
         const sidebarBg4 = "#333333";
         const accentBlue4 = "#2563eb";
         return (
-          <div className="w-full max-w-4xl mx-auto overflow-visible font-sans antialiased" style={{ minHeight: "1100px" }}>
-            {/* Header with diagonal shapes */}
-            <div className="relative h-24 flex items-end pb-4">
-              <div className="absolute inset-0 bg-gray-200" style={{ clipPath: "polygon(0 0, 30% 0, 15% 100%, 0 100%)" }} />
-              <div className="absolute right-0 top-0 bottom-0 w-1/2" style={{ backgroundColor: accentBlue4, clipPath: "polygon(70% 0, 100% 0, 100% 100%, 85% 100%)" }} />
-              <div className="relative z-10 w-full px-8 flex justify-center items-end">
-                <div className="text-center">
-                  <input type="text" value={nametemp4} onChange={(e) => setNametemp4(e.target.value)} className="text-2xl font-bold bg-transparent text-gray-900 uppercase text-center" placeholder="NAME" />
-                  <input type="text" value={profession4} onChange={(e) => setProfessiontemp4(e.target.value)} className="text-base bg-transparent w-full text-gray-700 mt-0.5 text-center" placeholder="Job Title" />
+          <div
+            data-template4
+            className="w-full max-w-4xl mx-auto overflow-visible font-sans antialiased flex flex-col"
+            style={{ minHeight: "1268px" }}
+          >
+            {/* Header: explicit hex + clip-path — same colors in browser & PDF (do not strip clip-path in clone) */}
+            <div data-template4-header-row className="relative min-h-[7.5rem] flex-shrink-0 flex items-end overflow-visible pb-3">
+              <div
+                data-template4-header-bg="left"
+                className="absolute inset-0 z-0"
+                style={{ backgroundColor: "#e5e7eb", clipPath: "polygon(0 0, 30% 0, 15% 100%, 0 100%)" }}
+              />
+              <div
+                data-template4-header-bg="right"
+                className="absolute right-0 top-0 bottom-0 z-0 w-1/2"
+                style={{ backgroundColor: accentBlue4, clipPath: "polygon(70% 0, 100% 0, 100% 100%, 85% 100%)" }}
+              />
+              <div data-template4-header-content className="relative z-20 w-full max-w-full px-4 sm:px-8 flex justify-center items-end">
+                <div className="text-center w-full min-w-0 max-w-full">
+                  <input data-template4-header="name" type="text" value={nametemp4} onChange={(e) => setNametemp4(e.target.value)} className="text-2xl font-bold bg-transparent text-gray-900 uppercase text-center w-full min-w-0 max-w-full [overflow-wrap:anywhere] leading-tight" placeholder="NAME" />
+                  <input data-template4-header="title" type="text" value={profession4} onChange={(e) => setProfessiontemp4(e.target.value)} className="text-base bg-transparent w-full min-w-0 text-gray-700 mt-1 text-center [overflow-wrap:anywhere]" placeholder="Job Title" />
                 </div>
               </div>
             </div>
-            <div className="flex">
-              {/* Left Sidebar - Dark grey */}
-              <div className="w-1/3 p-6 text-white" style={{ backgroundColor: sidebarBg4 }}>
+            {/* Flex row: equal-height columns (more reliable than grid for full-height sidebar in editor + html2canvas) */}
+            <div
+              data-template4-body
+              className="flex w-full flex-1 min-h-0 flex-col md:flex-row md:items-stretch md:min-h-[calc(1268px-7.5rem)]"
+            >
+              <div
+                className="flex min-h-0 min-w-0 w-full shrink-0 flex-col p-6 text-white md:w-[33.333%] md:min-w-[260px] md:max-w-[33.333%]"
+                style={{ backgroundColor: sidebarBg4 }}
+              >
                 <h3 className={`text-xs font-bold uppercase tracking-wider mb-3 text-white ${CV_SEC_H3}`}>Personal Info</h3>
-                <input type="text" value={addresstemp4} onChange={(e) => setAddresstemp4(e.target.value)} className="text-sm bg-transparent w-full mb-2 placeholder-white/60" placeholder="Address" />
-                <input type="text" value={phonetemp4} onChange={(e) => setPhonetemp4(e.target.value)} className="text-sm bg-transparent w-full mb-2 placeholder-white/60" placeholder="Phone" />
-                <input type="text" value={emailtemp4} onChange={(e) => setEmailtemp4(e.target.value)} className="text-sm bg-transparent w-full mb-2 placeholder-white/60" placeholder="Email" />
-                <input type="text" value={linkedintemp4} onChange={(e) => setLinkedintemp4(e.target.value)} className="text-sm bg-transparent w-full underline placeholder-white/60" placeholder="LinkedIn" />
+                <textarea
+                  ref={addressTemp4Ref}
+                  data-template4-contact
+                  data-template4-contact-address
+                  value={addresstemp4}
+                  onChange={(e) => setAddresstemp4(e.target.value)}
+                  onInput={(e) => resizeTextareaOnInput(e, 44)}
+                  rows={2}
+                  placeholder="Address"
+                  className="text-sm bg-transparent w-full min-w-0 mb-2 placeholder-white/60 break-words [overflow-wrap:anywhere] [word-break:normal] resize-none overflow-hidden leading-snug rounded-none"
+                  style={{ minHeight: '44px', fieldSizing: 'content' }}
+                />
+                <input data-template4-contact type="text" value={phonetemp4} onChange={(e) => setPhonetemp4(e.target.value)} className="text-sm bg-transparent w-full min-w-0 mb-2 placeholder-white/60 break-words [overflow-wrap:anywhere] [word-break:normal]" placeholder="Phone" />
+                <input data-template4-contact type="text" value={emailtemp4} onChange={(e) => setEmailtemp4(e.target.value)} className="text-sm bg-transparent w-full min-w-0 mb-2 placeholder-white/60 break-words [overflow-wrap:anywhere] [word-break:normal]" placeholder="Email" />
+                <input data-template4-contact type="text" value={linkedintemp4} onChange={(e) => setLinkedintemp4(e.target.value)} className="text-sm bg-transparent w-full min-w-0 underline placeholder-white/60 break-words [overflow-wrap:anywhere] [word-break:normal]" placeholder="LinkedIn" />
                 <div className="mt-6">
                   <h3 className={`text-xs font-bold uppercase tracking-wider mb-3 text-white ${CV_SEC_H3}`}>Skills</h3>
                   <div className="space-y-2">
                     {skillstemp4.map((s, i) => (
                       <div key={i}>
-                        <div className="flex gap-2 items-center mb-1">
-                          <input type="text" value={s.name} onChange={(e) => handleskillstemp4Change(i, 'name', e.target.value)} className="text-sm bg-transparent flex-1 placeholder-white/60" />
-                          <input type="number" min={0} max={100} value={s.level} onChange={(e) => handleskillstemp4Change(i, 'level', e.target.value)} className="w-12 text-xs bg-white/20 text-white rounded px-1" />
+                        <div className="flex gap-2 items-start mb-1 w-full min-w-0">
+                          <input
+                            data-template4-skill-name
+                            type="text"
+                            value={s.name}
+                            onChange={(e) => handleskillstemp4Change(i, 'name', e.target.value)}
+                            className="text-sm bg-transparent flex-1 min-w-0 basis-0 placeholder-white/60 leading-snug break-words [overflow-wrap:anywhere] [word-break:normal]"
+                          />
+                          <input type="number" min={0} max={100} value={s.level} onChange={(e) => handleskillstemp4Change(i, 'level', e.target.value)} className="mt-0.5 w-12 shrink-0 text-xs bg-white/20 text-white rounded px-1" />
                         </div>
                         <div className="h-1 bg-white/30 rounded overflow-hidden">
                           <div className="h-full bg-white rounded" style={{ width: `${Math.min(100, Math.max(0, s.level))}%` }} />
@@ -5676,9 +6552,15 @@ const Fill_cv = () => {
                   <div className="space-y-2">
                     {languagesTemp4.map((lang, i) => (
                       <div key={i}>
-                        <div className="flex gap-2 items-center mb-1">
-                          <input type="text" value={lang.name} onChange={(e) => handleLanguageTemp4Change(i, 'name', e.target.value)} className="text-sm bg-transparent flex-1 placeholder-white/60" />
-                          <input type="number" min={0} max={100} value={lang.level} onChange={(e) => handleLanguageTemp4Change(i, 'level', e.target.value)} className="w-12 text-xs bg-white/20 text-white rounded px-1" />
+                        <div className="flex gap-2 items-start mb-1 w-full min-w-0">
+                          <input
+                            data-template4-lang-name
+                            type="text"
+                            value={lang.name}
+                            onChange={(e) => handleLanguageTemp4Change(i, 'name', e.target.value)}
+                            className="text-sm bg-transparent flex-1 min-w-0 basis-0 placeholder-white/60 leading-snug break-words [overflow-wrap:anywhere] [word-break:normal]"
+                          />
+                          <input type="number" min={0} max={100} value={lang.level} onChange={(e) => handleLanguageTemp4Change(i, 'level', e.target.value)} className="mt-0.5 w-12 shrink-0 text-xs bg-white/20 text-white rounded px-1" />
                         </div>
                         <div className="h-1 bg-white/30 rounded overflow-hidden">
                           <div className="h-full bg-white rounded" style={{ width: `${Math.min(100, Math.max(0, lang.level))}%` }} />
@@ -5687,10 +6569,18 @@ const Fill_cv = () => {
                     ))}
                   </div>
                 </div>
+                {/* Fills remaining sidebar height so the grey column matches the main column (editor + PDF) */}
+                <div className="min-h-0 flex-1" aria-hidden="true" />
               </div>
               {/* Right - White main content */}
-              <div className="flex-1 p-8 bg-white">
-                <RichTextBlock value={summarytemp4} onChange={setSummarytemp4} className="text-sm bg-transparent w-full text-gray-800 leading-relaxed mb-6 block" minHeight="50px" placeholder="Professional summary..." />
+              <div className="min-w-0 w-full flex-1 bg-white p-8">
+                <RichTextBlock
+                  value={summarytemp4}
+                  onChange={setSummarytemp4}
+                  className="text-sm bg-transparent w-full min-w-0 text-gray-800 leading-relaxed mb-6 block break-words [overflow-wrap:anywhere]"
+                  minHeight="50px"
+                  placeholder="Professional summary..."
+                />
                 <div className="border-b-2 mb-4" style={{ borderColor: accentBlue4 }}>
                   <h3 className={`text-sm font-bold uppercase text-gray-900 ${CV_SEC_H3}`}>Employment History</h3>
                 </div>
@@ -5701,7 +6591,7 @@ const Fill_cv = () => {
                     <ul className="list-none pl-0 mt-2 space-y-1">
                       {workdonetemp4.map((w, i) => (
                         <li key={i}>
-                          <RichTextBlock value={w} onChange={(v) => handleworkdoneChange(i, v)} className="text-sm bg-transparent w-full text-gray-700" minHeight="24px" />
+                          <RichTextBlock value={w} onChange={(v) => handleworkdoneChange(i, v)} className="text-sm bg-transparent w-full min-w-0 text-gray-700 break-words [overflow-wrap:anywhere]" minHeight="24px" />
                         </li>
                       ))}
                     </ul>
@@ -5712,7 +6602,7 @@ const Fill_cv = () => {
                     <ul className="list-none pl-0 mt-2 space-y-1">
                       {workdone2temp4.map((w, i) => (
                         <li key={i}>
-                          <RichTextBlock value={w} onChange={(v) => handleworkdone2Change(i, v)} className="text-sm bg-transparent w-full text-gray-700" minHeight="24px" />
+                          <RichTextBlock value={w} onChange={(v) => handleworkdone2Change(i, v)} className="text-sm bg-transparent w-full min-w-0 text-gray-700 break-words [overflow-wrap:anywhere]" minHeight="24px" />
                         </li>
                       ))}
                     </ul>
@@ -5731,7 +6621,7 @@ const Fill_cv = () => {
                 <ul className="list-none pl-0 mt-4 space-y-1">
                   {certstemp4.map((c, i) => (
                     <li key={i}>
-                      <input type="text" value={c} onChange={(e) => handleCertTemp4Change(i, e.target.value)} className="text-sm bg-transparent w-full text-gray-700" />
+                      <input type="text" value={c} onChange={(e) => handleCertTemp4Change(i, e.target.value)} className="text-sm bg-transparent w-full min-w-0 text-gray-700 break-words [overflow-wrap:anywhere]" />
                     </li>
                   ))}
                 </ul>
@@ -7298,111 +8188,18 @@ const Fill_cv = () => {
             <span className="text-sm">{showEnhancedRef ? 'Hide' : 'Show'} CV reference</span>
           </button>
           {showEnhancedRef && (
-            <div className="flex flex-col flex-1 min-h-0 bg-white rounded-xl shadow-xl border border-slate-200/80 overflow-hidden max-lg:rounded-2xl max-lg:min-h-0">
-              {/* Always visible: primary action + status */}
-              <div className="shrink-0 p-3 border-b border-slate-100 bg-gradient-to-b from-emerald-50/80 to-white space-y-2">
-                <div className="flex items-start gap-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold">✓</span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-800">Enhanced CV loaded</p>
-                    <p className="text-xs text-slate-500 mt-0.5 leading-snug">
-                      Edit the text below, then copy into your template (~2–3s).
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopyToTemplate}
-                  disabled={isApplyingToTemplate}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-3 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-md"
-                >
-                  {isApplyingToTemplate ? (
-                    <>
-                      <svg className="w-5 h-5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden>
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Copying to template…
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Copy to template
-                    </>
-                  )}
-                </button>
-                {applyFeedback && (
-                  <p className={`text-xs font-medium ${applyFeedback.startsWith('Content applied') ? 'text-green-700' : 'text-amber-700'}`}>
-                    {applyFeedback}
-                  </p>
-                )}
-              </div>
-
-              {/* Scroll: preview + editor */}
-              <div className="flex-1 min-h-0 overflow-y-auto p-3">
-                <EnhancedResumeOrganizedPreview text={editableRefContent} />
-                <div className="mt-3">
-                  <label htmlFor="enhanced-ref-raw" className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 block mb-1.5">
-                    Full text (edit here)
-                  </label>
-                  <textarea
-                    id="enhanced-ref-raw"
-                    value={editableRefContent}
-                    onChange={(e) => setEditableRefContent(e.target.value)}
-                    rows={6}
-                    className="w-full p-3 text-sm text-slate-800 border border-slate-200 rounded-lg bg-slate-50/80 resize-y min-h-[120px] focus:ring-2 focus:ring-indigo-400 focus:border-indigo-300 focus:bg-white leading-relaxed font-mono"
-                    placeholder="Paste or edit your CV content here..."
-                    spellCheck
-                    style={{ wordBreak: 'break-word' }}
-                  />
-                </div>
-              </div>
-
-              {/* Sticky footer: tidy / clipboard / reset */}
-              <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 space-y-2">
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const tidied = (editableRefContent || '')
-                        .replace(/\r\n/g, '\n')
-                        .split('\n')
-                        .map((l) => l.trimEnd())
-                        .join('\n')
-                        .replace(/\n{4,}/g, '\n\n\n')
-                        .trim();
-                      setEditableRefContent(tidied);
-                    }}
-                    className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-white shrink-0"
-                    title="Remove extra blank lines"
-                  >
-                    Tidy spacing
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCopyRefContent}
-                    className="flex-1 min-w-[7rem] flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-                  >
-                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    {copied ? 'Copied!' : 'Copy text'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditableRefContent(enhancedResume)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-white bg-white"
-                  >
-                    Reset
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-snug">
-                  Use the green <strong>Copy to template</strong> button above to fill the CV fields from this text.
-                </p>
-              </div>
-            </div>
+            <EnhancedCvReferencePanelCard
+              textareaId="enhanced-ref-raw"
+              editableRefContent={editableRefContent}
+              setEditableRefContent={setEditableRefContent}
+              handleCopyToTemplate={handleCopyToTemplate}
+              isApplyingToTemplate={isApplyingToTemplate}
+              applyFeedback={applyFeedback}
+              handleCopyRefContent={handleCopyRefContent}
+              copied={copied}
+              enhancedResume={enhancedResume}
+              compact
+            />
           )}
         </div>
       )}
@@ -7549,7 +8346,7 @@ const Fill_cv = () => {
             </button>
             <p className="text-xs text-gray-500 -mt-1">
               {VISUAL_PDF_TEMPLATE_IDS.includes(templateId)
-                ? 'PDF matches the template preview layout.'
+                ? 'Image-based PDF — fills the full A4 page (no white margins). Aspect ratio may differ slightly from the preview if the capture is not A4-shaped. For a non-stretched copy use Print → Save as PDF.'
                 : 'Text-only editable PDF (not design-matched). Use PNG for exact visual layout.'}
             </p>
 

@@ -81,6 +81,8 @@ const Register = () => {
           email: formData.email,
           id: data.user?.id || data.id,
           role: data.user?.role || data.role || 'user',
+          is_staff: data.user?.is_staff === true,
+          is_superuser: data.user?.is_superuser === true,
           is_verified: data.user?.is_verified || data.is_verified || false,
           full_name: data.user?.full_name,
           first_name: data.user?.first_name,

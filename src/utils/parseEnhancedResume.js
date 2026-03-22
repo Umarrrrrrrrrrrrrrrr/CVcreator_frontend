@@ -33,6 +33,88 @@ function normalizeEnhancedInput(raw) {
     .trim();
 }
 
+function stripSummaryPlaceholders(summary) {
+  return String(summary || "")
+    .replace(/\[[^\]]*add[^\]]*\]/gi, "")
+    .replace(/\[[A-Z\s_]{4,}\]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function isGenericOrPlaceholderSummary(summary) {
+  const s = String(summary || "").trim();
+  if (!s) return true;
+  if (/\[[^\]]+\]/.test(s)) return true;
+  if (/add your|add key|add goal|placeholder|lorem ipsum/i.test(s)) return true;
+  const genericPatterns = [
+    /results-driven professional with proven experience/i,
+    /skilled in/i,
+    /seeking to leverage expertise/i,
+    /demonstrated success in/i,
+  ];
+  const genericHits = genericPatterns.filter((p) => p.test(s)).length;
+  return genericHits >= 2;
+}
+
+function buildMeaningfulSummary(result) {
+  const parts = [];
+  const title = result.profession || "Professional";
+  const topSkills = (result.skills || []).filter(Boolean).slice(0, 4);
+  const firstExp = (result.experiences || [])[0] || null;
+  const firstResp = (firstExp?.responsibilities || []).find((r) => r && r.length > 18);
+
+  if (topSkills.length > 0) {
+    parts.push(`${title} with strengths in ${topSkills.join(", ")}.`);
+  } else {
+    parts.push(`${title} focused on delivering reliable, high-quality outcomes.`);
+  }
+  if (firstResp) {
+    const cleanResp = firstResp.replace(/\.$/, "").trim();
+    parts.push(`Key contribution includes ${cleanResp}.`);
+  } else if (firstExp && (firstExp.role || firstExp.company)) {
+    const roleCompany = [firstExp.role, firstExp.company].filter(Boolean).join(" at ");
+    if (roleCompany) parts.push(`Recent experience includes ${roleCompany}.`);
+  }
+  return parts.join(" ").trim();
+}
+
+function isLikelyCertificationLine(line) {
+  const s = String(line || "").trim();
+  if (!s || s.length < 4 || s.length > 160) return false;
+  if (/^(about|profile|summary|objective)\b/i.test(s)) return false;
+  if (/\b(passionate|curious|committed|eager|seeking|motivated individual)\b/i.test(s)) return false;
+  const certKeyword =
+    /\b(certified|certification|certificate|credential|license|licensed|accredited|associate|professional)\b/i.test(s);
+  const knownCred =
+    /\b(PMP|PRINCE2|ITIL|CISSP|CEH|CCNA|CCNP|OCA|OCP|AWS|AZ-?\d{2,4}|GCP|TOEFL|IELTS|SCRUM|CSM|PSM|Kubernetes|CKA|CKAD|CompTIA)\b/i.test(
+      s
+    );
+  const examCode = /\b[A-Z]{2,6}-\d{2,4}\b/.test(s);
+  return certKeyword || knownCred || examCode;
+}
+
+function stripMergedAddressFromCertLine(s) {
+  const t = String(s || "").trim();
+  const idx = t.search(/\s+(?:Sundarharaicha|Dharan|Biratnagar|Itahari|Kathmandu|Lalitpur|Pokhara|Morang|Province|Ward)\b/i);
+  if (idx > 12) return t.slice(0, idx).trim();
+  return t.replace(/\s+\d+\s*[-–]\s*\d+\s*,\s*Morang.*$/i, "").trim();
+}
+
+function uniqueCertifications(items) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of items || []) {
+    let t = String(raw || "").replace(/^[-•*▪]\s*/, "").trim();
+    t = stripMergedAddressFromCertLine(t);
+    if (!isLikelyCertificationLine(t)) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
 /**
  * Parses enhanced CV text into structured data for auto-populating template fields.
  */
@@ -45,9 +127,11 @@ export function parseEnhancedResumeToStructuredData(text) {
     profession: "",
     summary: "",
     skills: [],
+    languages: [],
     experiences: [],
     highlights: [],
     achievements: [],
+    certifications: [],
     education: { degree: "", school: "", date: "" },
     contact: { phone: "", email: "", address: "", linkedin: "", location: "" },
   };
@@ -141,6 +225,33 @@ export function parseEnhancedResumeToStructuredData(text) {
       }
       result.skills = [...new Set(skillItems)].filter(Boolean).slice(0, 15);
     } else if (
+      /\blanguages?\b/i.test(lineLower) &&
+      !/programming/i.test(lineLower) &&
+      !/\b(code|framework|stack|typescript|python|java|react)\b/i.test(lineLower)
+    ) {
+      const content = getSectionContent(i);
+      const langs = [];
+      const pushLang = (raw) => {
+        let t = String(raw || "")
+          .trim()
+          .replace(/^[-•*▪]\s*/, "");
+        if (t.length < 2 || t.length > 52 || /^\d+$/.test(t)) return;
+        t = t.replace(/\s*\([^)]*\)\s*$/, "").trim();
+        const head = t.split(/[–—:|]/)[0].trim();
+        if (head.length >= 2 && head.length <= 40 && !/\d{3,}/.test(head)) {
+          langs.push(head.replace(/\s+/g, " "));
+        }
+      };
+      for (const c of content) {
+        if (!c.trim()) continue;
+        if (c.includes(",") || c.includes(";")) {
+          c.split(/[,;]/).forEach((p) => pushLang(p));
+        } else {
+          pushLang(c);
+        }
+      }
+      result.languages = [...new Set(langs.map((l) => l.replace(/\.$/, "")))].slice(0, 8);
+    } else if (
       /\bhighlights?\b/.test(lineLower) ||
       lineLower.includes("key highlights") ||
       /\bcore strengths\b/.test(lineLower)
@@ -165,17 +276,22 @@ export function parseEnhancedResumeToStructuredData(text) {
         }
       }
       result.skills = [...new Set(result.skills)].filter(Boolean).slice(0, 25);
-    } else if (
-      lineLower.includes("achievement") ||
-      lineLower.includes("awards") ||
-      (lineLower.includes("certification") && !lineLower.includes("education"))
-    ) {
+    } else if (lineLower.includes("certification") && !lineLower.includes("education")) {
       const content = getSectionContent(i);
       for (const c of content) {
         const t = c.trim();
         if (!t) continue;
-        if (/^[-•*▪]/.test(t)) result.achievements.push(t.replace(/^[-•*▪]\s*/, "").trim());
-        else if (t.length > 4 && t.length < 220) result.achievements.push(t);
+        const cleaned = /^[-•*▪]/.test(t) ? t.replace(/^[-•*▪]\s*/, "").trim() : t;
+        if (isLikelyCertificationLine(cleaned)) result.certifications.push(cleaned);
+      }
+    } else if (lineLower.includes("achievement") || lineLower.includes("awards")) {
+      const content = getSectionContent(i);
+      for (const c of content) {
+        const t = c.trim();
+        if (!t) continue;
+        const cleaned = /^[-•*▪]/.test(t) ? t.replace(/^[-•*▪]\s*/, "").trim() : t;
+        if (isLikelyCertificationLine(cleaned)) result.certifications.push(cleaned);
+        else if (cleaned.length > 4 && cleaned.length < 220) result.achievements.push(cleaned);
       }
     } else if (lineLower.includes("experience") || lineLower.includes("employment")) {
       const content = getSectionContent(i);
@@ -362,8 +478,16 @@ export function parseEnhancedResumeToStructuredData(text) {
     /(?:\+?\d{1,3}[-.\s\u00a0]?)?(?:\(\d{3}\)|\d{3})[-.\s\u00a0]?\d{3}[-.\s\u00a0]?\d{4}\b/
   );
   if (phoneM) result.contact.phone = phoneM[0].trim();
+  if (!result.contact.phone) {
+    const np = normalizedText.match(/\+977[\s-]?\d{9,10}\b/);
+    if (np) result.contact.phone = np[0].replace(/\s+/g, " ").trim();
+  }
   const linkedinM = normalizedText.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i);
   if (linkedinM) result.contact.linkedin = linkedinM[0].replace(/^https?:\/\//i, "");
+  if (!result.contact.linkedin) {
+    const ghM = normalizedText.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w.-]+/i);
+    if (ghM) result.contact.linkedin = ghM[0].replace(/^https?:\/\//i, "");
+  }
   const addrLine = lines.find(
     (l) =>
       /\d/.test(l) &&
@@ -372,7 +496,30 @@ export function parseEnhancedResumeToStructuredData(text) {
       /\b(street|st\.|road|rd\.|avenue|ave|lane|ln\.|drive|dr\.|boulevard|blvd|way|city|zip|postal|apt)\b/i.test(l)
   );
   if (addrLine) result.contact.address = addrLine.trim();
+  if (!result.contact.address) {
+    const nepalStyle = lines.find(
+      (l) =>
+        l.length > 8 &&
+        l.length < 140 &&
+        /\b(morang|sundarharaicha|kathmandu|biratnagar|dharan|itahari|nepal|province)\b/i.test(l) &&
+        /[-–]\s*\d+/.test(l)
+    );
+    if (nepalStyle) result.contact.address = nepalStyle.trim();
+  }
+  if (!result.contact.address) {
+    const loose = lines.find((l) => {
+      const t = l.trim();
+      if (t.length < 12 || t.length > 160) return false;
+      if (/^[-•*]/.test(t)) return false;
+      if (/@/.test(t)) return false;
+      if (/^[A-Z\s]+$/i.test(t) && t.length < 40 && !/\d/.test(t)) return false;
+      if (!/\d/.test(t)) return false;
+      return /,/.test(t) || /\b(nepal|province|ward|street|st\.|road|city|zip|postal)\b/i.test(t);
+    });
+    if (loose) result.contact.address = loose.trim();
+  }
 
+  result.summary = stripSummaryPlaceholders(result.summary);
   if (!result.summary) {
     const firstPara = lines.find((l) => l.length > 60 && !sectionHeaders.some((h) => l.toLowerCase().includes(h)));
     if (firstPara) result.summary = firstPara.slice(0, 800);
@@ -417,6 +564,41 @@ export function parseEnhancedResumeToStructuredData(text) {
     if (responsibilities.length > 0) {
       result.experiences = [{ role: "Professional Experience", company: "", dateRange: "", responsibilities }];
     }
+  }
+
+  if (result.certifications.length === 0) {
+    const certLikeLines = lines.filter((l) => isLikelyCertificationLine(l));
+    result.certifications = uniqueCertifications(certLikeLines).slice(0, 8);
+  } else {
+    result.certifications = uniqueCertifications(result.certifications).slice(0, 8);
+  }
+
+  result.summary = stripSummaryPlaceholders(result.summary);
+  if (isGenericOrPlaceholderSummary(result.summary)) {
+    result.summary = buildMeaningfulSummary(result);
+  }
+
+  // Drop employment bullets (and noisy roles) that repeat the summary — avoids duplicate lines in template/PDF
+  if (result.summary && result.experiences?.length > 0) {
+    const sumNorm = result.summary.toLowerCase().replace(/\s+/g, " ").trim();
+    result.experiences = result.experiences.map((ex) => {
+      let role = ex.role || "";
+      const rNorm = role.trim().toLowerCase().replace(/\s+/g, " ");
+      if (rNorm.length > 25 && sumNorm.includes(rNorm)) {
+        role = "";
+      } else if (rNorm.length > 30 && sumNorm.includes(rNorm.slice(0, Math.min(48, rNorm.length)))) {
+        role = "";
+      }
+      const responsibilities = (ex.responsibilities || []).filter((r) => {
+        const t = String(r).trim().toLowerCase().replace(/\s+/g, " ").replace(/\.{2,}/g, ".");
+        if (t.length < 8) return true;
+        if (t.length < 40 && sumNorm.includes(t)) return false;
+        // Only strip long bullets that are fully embedded in the summary (avoid wiping all job duties)
+        if (t.length >= 80 && sumNorm.includes(t)) return false;
+        return true;
+      });
+      return { ...ex, role, responsibilities };
+    });
   }
 
   return result;

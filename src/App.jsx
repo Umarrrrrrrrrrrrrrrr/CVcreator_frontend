@@ -17,6 +17,7 @@ import PaymentCallback from "./Pages/Payment/PaymentCallback";
 import CvGrade from "./Pages/CvGrade/CvGrade";
 import Profile from "./Pages/Profile/Profile";
 import ContactSupport from "./Pages/ContactSupport/ContactSupport";
+import Admin from "./Pages/Admin/Admin";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -31,6 +32,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/home" element={<Home />} />
         <Route path="/contact-support" element={<ContactSupport />} />
+        <Route path="/admin" element={<Admin />} />
         <Route path="/search_job" element={
           <ProtectedRoute>
             <Search_job/>

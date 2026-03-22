@@ -17,6 +17,7 @@ const API_CONFIG = {
     ESEWA_VERIFY: '/api/payments/esewa/verify/',
     KHALTI_INITIATE: '/api/payments/khalti/initiate/',
     KHALTI_VERIFY: '/api/payments/khalti/verify/',
+    ADMIN_USERS: '/api/auth/admin/users/',
   }
 };
 
