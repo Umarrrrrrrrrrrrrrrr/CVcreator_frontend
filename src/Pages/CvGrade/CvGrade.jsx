@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Naavbar from "../Naavbar";
+import Navbar from "../Navbar/Navbar";
 import { getApiUrl } from "../../config/api";
 import API_CONFIG from "../../config/api";
 
@@ -166,7 +166,7 @@ const CvGrade = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
-      <Naavbar />
+      <Navbar />
       <div className="max-w-4xl mx-auto px-4 py-10">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">CV Grading</h1>

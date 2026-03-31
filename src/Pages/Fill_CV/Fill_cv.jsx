@@ -9,6 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import { parseEnhancedResumeToStructuredData, looksLikeDateRangeLine } from "../../utils/parseEnhancedResume";
 import FormattingToolbar from "../../components/FormattingToolbar";
 import RichTextBlock from "../../components/RichTextBlock";
+import Navbar from "../Navbar/Navbar";
 
 const stripHtml = (html) => {
   if (!html || typeof html !== 'string') return '';
@@ -8130,7 +8131,9 @@ const Fill_cv = () => {
   const hasValidTemplate = templateId && !Number.isNaN(templateId) && templateId >= 1 && templateId <= 16;
   if (!hasValidTemplate) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+      <div>
+        <Navbar />
+        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 -mt-20">
         <div className="flex flex-col items-center gap-4 max-w-md text-center">
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8152,13 +8155,13 @@ const Fill_cv = () => {
           </button>
         </div>
       </div>
+      </div>
     );
   }
 
   return (
     <div className="relative">
-  <div>
-  <nav className="fixed top-0 left-0 right-0 w-full h-14 bg-slate-800 shadow-md z-50">
+      <Navbar />
     <img src={Logo} className="h-[70px] w-52 ml-20 mt-[-10px] absolute object-contain" alt="Logo" />
     <p className="text-slate-100 ml-[600px] font-medium text-lg mt-3 absolute hidden xl:block pointer-events-none">Click anywhere to edit your CV</p>
     <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 sm:gap-3 max-w-[min(52vw,calc(100%-12rem))] sm:max-w-none justify-end">
@@ -8166,8 +8169,6 @@ const Fill_cv = () => {
         {TEMPLATE_NAMES[templateId] || `Template ${templateId}`}
       </span>
     </div>
-  </nav>
-  </div>
 
       {enhancedResume && (
         <div

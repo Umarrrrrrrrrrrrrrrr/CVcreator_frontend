@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 // import Logo from "./Pages/assets/logoo.png";
 import Logo from "./assets/logoo.png";
 import { useNavigate } from 'react-router-dom';
+import Navbar from './Navbar/Navbar';
 
 const Find_job = () => {
   const [selectedDiv, setselectedDiv] = useState(null);
@@ -53,7 +54,9 @@ const Find_job = () => {
   
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div>
+      <Navbar />
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 -mt-20">
       {/* Header Section */}
       <div className="bg-white shadow-lg sticky top-0 z-50">
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -464,7 +467,8 @@ const Find_job = () => {
           </div>
         )}
       </div>
+      </div>
     </div>
   );
 };
-export default Find_job
+export default Find_job;

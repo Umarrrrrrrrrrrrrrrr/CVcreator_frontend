@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { AiOutlineUpload, AiOutlineFilePdf } from "react-icons/ai";
+import Navbar from "../Navbar/Navbar";
 
 const PdfUploader = () => {
   const [file, setFile] = useState(null);
@@ -27,7 +28,9 @@ const PdfUploader = () => {
   const handleClear = () => setFile(null);
 
   return (
-    <div className="w-full max-w-xl mx-auto mt-12 p-6 bg-white rounded-lg shadow-lg border border-gray-300">
+    <div>
+      <Navbar />
+      <div className="w-full max-w-xl mx-auto mt-12 p-6 bg-white rounded-lg shadow-lg border border-gray-300">
       <h2 className="text-2xl font-bold text-center mb-6">Upload Your Resume</h2>
 
       {/* Drag & Drop Zone */}
@@ -73,6 +76,7 @@ const PdfUploader = () => {
       >
         Grade Resume
       </button>
+    </div>
     </div>
   );
 };

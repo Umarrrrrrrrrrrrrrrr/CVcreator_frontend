@@ -18,6 +18,7 @@ import temp14 from "./assets/temp14.png";
 import temp15 from "./assets/temp15.png";
 import temp16 from "./assets/temp16.png";
 import { useAuth } from "../context/AuthContext";
+import Navbar from "./Navbar/Navbar";
 
 const Choose_templates = () => {
     const location = useLocation();
@@ -131,7 +132,9 @@ const Choose_templates = () => {
     };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div>
+      <Navbar />
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 -mt-20">
       <nav className="bg-white shadow-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <img src={logoo} alt="Logo" className="h-12 w-auto cursor-pointer" onClick={() => navigate('/')} />
@@ -477,6 +480,7 @@ const Choose_templates = () => {
           </div>
         </div>
       </footer>
+    </div>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Naavbar from './Naavbar'
+import Navbar from './Navbar/Navbar'
 import { getApiUrl, fetchWithAuth } from '../config/api'
 import API_CONFIG from '../config/api'
 
@@ -147,7 +147,7 @@ const Create_job = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <Naavbar/>
+      <Navbar/>
       
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}

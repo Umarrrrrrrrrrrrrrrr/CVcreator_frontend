@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getApiUrl } from '../config/api';
+import Navbar from './Navbar/Navbar';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -165,7 +166,9 @@ const Register = () => {
   };
   
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-pink-50 to-red-50 py-12 px-4">
+      <div>
+        <Navbar />
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-pink-50 to-red-50 py-12 px-4 -mt-20">
         <div className="w-full max-w-md">
           {/* Header */}
           <div className="text-center mb-8">
@@ -303,6 +306,7 @@ const Register = () => {
             </div>
           </form>
         </div>
+      </div>
       </div>
     );
 }

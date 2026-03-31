@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { getApiUrl } from '../config/api';
+import Navbar from './Navbar/Navbar';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -74,7 +75,9 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-12 px-4">
+    <div>
+      <Navbar />
+      <div className="min-h-screen relative flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-12 px-4 -mt-20">
       <button
         onClick={toggleLanguage}
         className="absolute top-4 right-4 px-3 py-1.5 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 hover:bg-blue-50"
@@ -186,6 +189,7 @@ const Login = () => {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 };

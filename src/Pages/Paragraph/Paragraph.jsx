@@ -285,25 +285,41 @@ const Paragraph = () => {
         </div>
       </div>
 
-      {/* Generic vs Tailored Section */}
-      <div className="max-w-7xl mx-auto px-4 mt-16">
-        <div className="text-center mb-8">
+      {/* Visual story: one cohesive section (was two stacked full-bleed images) */}
+      <div className="max-w-7xl mx-auto px-4 mt-20 mb-4">
+        <div className="text-center mb-10 md:mb-12">
           <h2 className="font-bold text-3xl lg:text-4xl text-gray-800 mb-4">
             {t("home.whyTailoredWin")}
           </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
             {t("home.whyTailoredDesc")}
           </p>
         </div>
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          <img src={genericVsTailored} alt="Generic vs Tailored resumes comparison" className="w-full h-auto" />
-        </div>
-      </div>
 
-      {/* Image Section */}
-      <div className="max-w-4xl mx-auto px-4 mt-16">
-        <div className="bg-gradient-to-br from-blue-400 to-purple-400 rounded-2xl shadow-2xl overflow-hidden">
-          <img src={resumePreview} alt="Resume Preview" className="w-full h-auto" />
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-stretch">
+          <figure className="flex flex-col bg-white rounded-2xl shadow-lg border border-gray-100/80 overflow-hidden ring-1 ring-gray-100">
+            <figcaption className="px-5 py-4 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-100 text-left">
+              <h3 className="font-semibold text-gray-900">{t("home.visualStoryLeftTitle")}</h3>
+              <p className="text-sm text-gray-500 mt-1 leading-snug">{t("home.visualStoryLeftCaption")}</p>
+            </figcaption>
+            <div className="flex-1 flex items-center justify-center p-4 sm:p-6 bg-white min-h-[220px]">
+              <img
+                src={genericVsTailored}
+                alt="Illustration comparing generic and tailored job applications"
+                className="w-full max-h-[min(420px,45vh)] object-contain rounded-lg"
+              />
+            </div>
+          </figure>
+
+          <figure className="flex flex-col bg-white rounded-2xl shadow-lg border border-gray-100/80 overflow-hidden ring-1 ring-gray-100">
+            <div className="flex-1 flex items-center justify-center p-4 sm:p-6 sm:pt-8 bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 min-h-[220px]">
+              <img
+                src={resumePreview}
+                alt="Professional resume template preview"
+                className="w-full max-h-[min(420px,45vh)] object-contain rounded-lg shadow-sm"
+              />
+            </div>
+          </figure>
         </div>
       </div>
 
