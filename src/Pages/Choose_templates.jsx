@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import logoo from "./assets/logoo.png";
+import logoo from "./assets/NIRN .png";
 import temp1 from "./assets/temp1.png";
 import temp2 from "./assets/temp2.png";
 import temp3 from "./assets/temp3.png";

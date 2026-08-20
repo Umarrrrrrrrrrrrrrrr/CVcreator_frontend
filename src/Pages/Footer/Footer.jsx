@@ -1,5 +1,5 @@
 import React from "react";
-import logoo from "../assets/logoo.png";
+import logoo from "../assets/NIRN .png";
 import x from "../assets/x.webp";
 import fbb from "../assets/fbb.webp";
 import link from "../assets/link.webp";

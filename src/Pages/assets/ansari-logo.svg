@@ -1,0 +1,27 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="20%" stop-color="#F7C948"/>
+      <stop offset="48%" stop-color="#F4B400"/>
+      <stop offset="75%" stop-color="#D89A00"/>
+      <stop offset="100%" stop-color="#F0C75E"/>
+    </linearGradient>
+    <linearGradient id="goldSoft" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFF7D6"/>
+      <stop offset="100%" stop-color="#F0C75E"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(20 20)">
+    <path d="M96 310C60 300 32 270 20 228C12 198 14 164 28 136C41 111 65 90 96 80L96 115C76 124 60 139 52 160C44 182 44 206 52 228C61 251 79 270 96 280L96 310Z" fill="url(#gold)" opacity="0.98"/>
+    <path d="M116 320C175 286 205 225 201 170C197 118 159 72 112 52C128 78 138 108 139 140C141 202 111 252 80 290L116 320Z" fill="url(#gold)" opacity="0.95"/>
+    <path d="M102 106C122 120 134 142 135 170C136 193 127 217 111 236C95 254 73 268 52 276C78 256 93 228 98 198C103 170 100 135 102 106Z" fill="url(#goldSoft)" opacity="0.7"/>
+    <path d="M85 134C103 146 116 165 120 186C124 210 118 236 101 258C87 275 66 287 43 293C61 283 75 267 84 249C94 228 96 203 90 179C86 167 82 152 85 134Z" fill="#F7E7A8" opacity="0.9"/>
+  </g>
+
+  <g>
+    <text x="270" y="220" fill="url(#gold)" font-size="200" font-weight="700" font-family="Georgia, 'Times New Roman', serif" letter-spacing="2">ANSARI</text>
+    <text x="420" y="325" fill="url(#gold)" font-size="48" font-weight="700" font-family="Verdana, Arial, sans-serif" letter-spacing="6">MAKE YOUR CV BEST</text>
+  </g>
+</svg>
