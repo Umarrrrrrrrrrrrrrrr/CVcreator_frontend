@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import Logo from "./assets/ansari-logo.svg";
+import Logo from "./assets/NIRN.png";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -41,8 +41,8 @@ const Naavbar = () => {
     <nav className="bg-white shadow-lg sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
-          <div className="flex-shrink-0 flex items-center">
-            <img src={Logo} alt="Logo" className="h-16 w-auto cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate("/")} />
+          <div className="flex-shrink-0 flex items-center ml-12">
+            <img src={Logo} alt="NIRN Logo" className="h-12 md:h-14 w-auto max-w-[170px] object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate("/")} />
           </div>
 
           <div className="hidden md:flex md:items-center md:gap-1">

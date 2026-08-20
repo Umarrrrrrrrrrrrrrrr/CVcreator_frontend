@@ -16,22 +16,39 @@ function skillsToLabelString(skills, requiredSkills) {
   return String(skills);
 }
 
+const formatSalaryText = (value) => {
+  if (value == null || value === "") return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text.replace(/\$/g, "Rs. ");
+};
+
 const normalizeJob = (raw) => {
   if (!raw) return null;
   const salaryMin = raw.salary_min ?? raw.salaryMin;
   const salaryMax = raw.salary_max ?? raw.salaryMax;
   const emp = raw.employment_type ?? raw.employmentType ?? "";
   const employmentType = String(emp).replace(/_/g, "-");
-  let salaryRange = raw.salary_range ?? raw.salaryRange ?? null;
+  const rawCompanyName = raw.company_name ?? raw.companyName ?? "";
+  const companyName = /ansari/i.test(rawCompanyName)
+    ? "New Islamic Republic of Nepal (NIRN)"
+    : rawCompanyName;
+  let salaryRange = formatSalaryText(raw.salary_range ?? raw.salaryRange ?? null);
   if (!salaryRange && (salaryMin != null || salaryMax != null)) {
     const min = salaryMin != null ? Number(salaryMin).toLocaleString() : "?";
     const max = salaryMax != null ? Number(salaryMax).toLocaleString() : "?";
-    salaryRange = `$${min} - $${max}`;
+    salaryRange = `Rs. ${min} - Rs. ${max}`;
   }
+  const normalizedBranches = /ansari|nirn/i.test(companyName)
+    ? ["Itahari", "Dharan", "Kathmandu"]
+    : Array.isArray(raw.branches) && raw.branches.length
+      ? raw.branches
+      : [];
   return {
     id: raw.id,
     jobTitle: raw.job_title ?? raw.jobTitle,
-    companyName: raw.company_name ?? raw.companyName,
+    companyName,
+    branches: normalizedBranches,
     location: raw.location,
     employmentType: employmentType || raw.employmentType || "",
     salaryRange,
@@ -282,9 +299,9 @@ const Search_job = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Ranges</option>
-                <option value="entry">Entry Level ($50k - $80k)</option>
-                <option value="medium">Mid Level ($80k - $120k)</option>
-                <option value="high">Senior Level ($120k+)</option>
+                <option value="entry">Entry Level (Rs. 50,000 - Rs. 80,000)</option>
+                <option value="medium">Mid Level (Rs. 80,000 - Rs. 120,000)</option>
+                <option value="high">Senior Level (Rs. 120,000+)</option>
               </select>
             </div>
           </div>
@@ -345,7 +362,10 @@ const Search_job = () => {
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   <div className="flex-1">
                     <h2 className="text-2xl font-bold text-gray-800 mb-2">{job.jobTitle}</h2>
-                    <p className="text-lg text-blue-600 font-semibold mb-3">{job.companyName}</p>
+                    <p className="text-lg text-blue-600 font-semibold mb-1">{job.companyName}</p>
+                    {job.branches && job.branches.length > 0 && (
+                      <p className="text-sm text-gray-500 mb-3">Branches: {job.branches.join(", ")}</p>
+                    )}
                     
                     <div className="flex flex-wrap gap-4 mb-4">
                       <div className="flex items-center text-gray-600">
@@ -407,10 +427,8 @@ const Search_job = () => {
                     )}
 
                     <div className="flex items-center text-sm text-gray-500">
-                      <span>Posted: {formatDate(job.postedDate)}</span>
-                      {job.applicationDeadline && (
-                        <span className="ml-4">Deadline: {formatDate(job.applicationDeadline)}</span>
-                      )}
+                      <span>Coming soon</span>
+                      <span className="ml-4">Deadline: 2030 Mar 03</span>
                     </div>
                   </div>
 
@@ -444,6 +462,9 @@ const Search_job = () => {
                 <div>
                   <h2 className="text-3xl font-bold text-gray-800">{selectedJob.jobTitle}</h2>
                   <p className="text-xl text-blue-600 font-semibold mt-1">{selectedJob.companyName}</p>
+                  {selectedJob.branches && selectedJob.branches.length > 0 && (
+                    <p className="text-sm text-gray-500 mt-1">Branches: {selectedJob.branches.join(", ")}</p>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowModal(false)}
