@@ -44,19 +44,35 @@ const normalizeJob = (raw) => {
     : Array.isArray(raw.branches) && raw.branches.length
       ? raw.branches
       : [];
+  const displayLocation = /ansari|nirn/i.test(companyName)
+    ? "Sunsari"
+    : raw.location || "";
+  const defaultNIRNDescription =
+    "We are looking for a motivated individual who can manage and coordinate our team, work effectively with students and partners, and support student enrolment and marketing activities. The role involves promoting our organisation, communicating with prospective students, managing enrolment processes, and helping expand our student community and organisational reach.";
+  const defaultNIRNSkills =
+    "Team management and leadership, Recruiting, Interviewing, Organization Branding, Customer service skills";
+  const defaultNIRNSalaryMin = 20000;
+  const defaultNIRNSalaryMax = 60000;
+  const normalizedSalaryRange = /ansari|nirn/i.test(companyName)
+    ? `Rs. ${defaultNIRNSalaryMin.toLocaleString()} - Rs. ${defaultNIRNSalaryMax.toLocaleString()}`
+    : salaryRange;
   return {
     id: raw.id,
     jobTitle: raw.job_title ?? raw.jobTitle,
     companyName,
     branches: normalizedBranches,
-    location: raw.location,
+    location: displayLocation,
     employmentType: employmentType || raw.employmentType || "",
-    salaryRange,
-    salaryMin: raw.salary_min ?? raw.salaryMin,
-    salaryMax: raw.salary_max ?? raw.salaryMax,
-    jobDescription: raw.job_description ?? raw.jobDescription,
+    salaryRange: normalizedSalaryRange,
+    salaryMin: /ansari|nirn/i.test(companyName) ? defaultNIRNSalaryMin : raw.salary_min ?? raw.salaryMin,
+    salaryMax: /ansari|nirn/i.test(companyName) ? defaultNIRNSalaryMax : raw.salary_max ?? raw.salaryMax,
+    jobDescription: /ansari|nirn/i.test(companyName)
+      ? defaultNIRNDescription
+      : raw.job_description ?? raw.jobDescription,
     requirements: raw.requirements,
-    skills: skillsToLabelString(raw.skills, raw.required_skills),
+    skills: /ansari|nirn/i.test(companyName)
+      ? defaultNIRNSkills
+      : skillsToLabelString(raw.skills, raw.required_skills),
     remoteOption: raw.is_remote ?? raw.remoteOption ?? false,
     postedDate: raw.posted_date ?? raw.created_at ?? raw.postedDate,
     applicationDeadline: raw.application_deadline ?? raw.applicationDeadline,
@@ -474,7 +490,13 @@ const Search_job = () => {
                 </button>
               </div>
               <div className="flex flex-wrap gap-4 text-sm">
-                <span className="text-gray-600">📍 {selectedJob.location}</span>
+                <span className="flex items-center text-gray-600">
+                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  {selectedJob.location}
+                </span>
                 <span className="text-gray-600">💼 {selectedJob.employmentType}</span>
                 {selectedJob.salaryRange && (
                   <span className="text-gray-600">💰 {selectedJob.salaryRange}</span>
