@@ -350,30 +350,14 @@ const Paragraph = () => {
         </div>
 
         {/* Stats Section */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mt-12">
+        <div className="flex justify-center gap-16 mt-12">
           <div className="text-center">
-            <p className="text-4xl font-bold text-blue-600 mb-2">41M+</p>
-            <p className="text-sm text-gray-600">Job applications created</p>
+            <p className="text-4xl font-bold text-green-400 mb-2">30+</p>
+            <p className="text-sm text-white">Career Experts</p>
           </div>
           <div className="text-center">
-            <p className="text-4xl font-bold text-blue-600 mb-2">1400M+</p>
-            <p className="text-sm text-gray-600">Free career guides</p>
-          </div>
-          <div className="text-center">
-            <p className="text-4xl font-bold text-blue-600 mb-2">40M+</p>
-            <p className="text-sm text-gray-600">Readers a year</p>
-          </div>
-          <div className="text-center">
-            <p className="text-4xl font-bold text-blue-600 mb-2">30+</p>
-            <p className="text-sm text-gray-600">Career Experts</p>
-          </div>
-          <div className="text-center">
-            <p className="text-4xl font-bold text-blue-600 mb-2">10+</p>
-            <p className="text-sm text-gray-600">Years in business</p>
-          </div>
-          <div className="text-center">
-            <p className="text-4xl font-bold text-blue-600 mb-2">1000+</p>
-            <p className="text-sm text-gray-600">Media mentions</p>
+            <p className="text-4xl font-bold text-green-400 mb-2">50+</p>
+            <p className="text-sm text-white">Years in business</p>
           </div>
         </div>
       </div>
