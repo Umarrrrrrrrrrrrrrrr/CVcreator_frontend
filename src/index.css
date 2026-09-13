@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  position: relative;
+  min-height: 100vh;
+  background-color: #02070b;
+  background-image: linear-gradient(rgba(2, 7, 11, 0.28), rgba(2, 7, 11, 0.48)), url("./Pages/assets/Back%20Image.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
 /* Custom Animations for Grading System */
 @keyframes blob {
   0% {

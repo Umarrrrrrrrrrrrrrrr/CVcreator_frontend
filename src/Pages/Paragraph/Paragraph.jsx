@@ -23,7 +23,7 @@ const Paragraph = () => {
   }
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-16 relative overflow-hidden">
+    <div className="bg-black/20 py-16 relative overflow-hidden">
       {/* AI Animated Background Elements */}
       <div className="absolute top-10 left-10 w-32 h-32 bg-blue-200 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-blob"></div>
       <div className="absolute top-20 right-20 w-40 h-40 bg-purple-200 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-blob animation-delay-2000"></div>
@@ -52,12 +52,6 @@ const Paragraph = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 text-center relative z-10">
-        <h1 className="font-bold text-5xl lg:text-6xl text-gray-800 mb-6">
-          <span className="block">{t("home.heroTitle")}</span>
-          <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mt-2">
-            {t("home.heroSubtitle")}
-          </span>
-        </h1>
         <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
           {t("home.heroDesc")}
         </p>
