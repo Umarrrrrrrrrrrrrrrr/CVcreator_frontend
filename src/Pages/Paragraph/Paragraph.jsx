@@ -52,9 +52,6 @@ const Paragraph = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 text-center relative z-10">
-        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          {t("home.heroDesc")}
-        </p>
         <div className="flex flex-col sm:flex-row justify-center gap-4">
           <button 
             className="px-8 py-4 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full text-lg font-semibold text-gray-800 hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105" 
@@ -342,10 +339,10 @@ const Paragraph = () => {
       {/* About Section */}
       <div className="max-w-7xl mx-auto px-4 py-16">
         <div className="text-center mb-12">
-          <h2 className="font-bold text-4xl lg:text-5xl text-gray-800 mb-6">
+          <h2 className="font-bold text-4xl lg:text-5xl text-white mb-6">
             {t("home.whatIsAnsari")}
           </h2>
-          <div className="max-w-3xl mx-auto space-y-4 text-lg text-gray-600 leading-relaxed">
+          <div className="max-w-3xl mx-auto space-y-4 text-lg text-white leading-relaxed">
             <p>{t("home.whatIsAnsariDesc1")}</p>
             <p>{t("home.whatIsAnsariDesc2")}</p>
             <p>{t("home.whatIsAnsariDesc3")}</p>
